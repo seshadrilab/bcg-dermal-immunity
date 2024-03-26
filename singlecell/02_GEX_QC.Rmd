@@ -30,9 +30,6 @@ library(tidyverse)
 
 set.seed(4)
 
-# Save all output, instead of just minimum required objects for the next scripts
-save_output <- TRUE
-
 # Top-level folder where script outputs should be stored
 script_output_dir <- file.path(here::here(), "output")
 
@@ -173,14 +170,12 @@ f1 + f2
 Save
 
 ```{r}
-if (save_output) {
-  # Dots
-  cairo_pdf(file=file.path(script_output_dir, "out/qc_scdblfinder.pdf"), width=5, height=5,
-        onefile = TRUE, bg = "transparent", family = "Arial") 
-  print(f1)
-  print(f2)
-  dev.off()
-}
+# Dots
+cairo_pdf(file=file.path(script_output_dir, "out/qc_scdblfinder.pdf"), width=5, height=5,
+      onefile = TRUE, bg = "transparent", family = "Arial") 
+print(f1)
+print(f2)
+dev.off()
 ```
 
 
@@ -208,10 +203,8 @@ day15 <- subset(day15, subset = scDblFinder.class == "singlet")
 d3_gex_singlet_count <- length(day3$orig.ident)
 d15_gex_singlet_count <- length(day15$orig.ident)
 
-if(save_output) {
-  saveRDS(day3, file = file.path(script_output_dir, "processed_data/3_singlets_d3.rds"))
-  saveRDS(day15, file = file.path(script_output_dir, "processed_data/3_singlets_d15.rds"))
-}
+saveRDS(day3, file = file.path(script_output_dir, "processed_data/3_singlets_d3.rds"))
+saveRDS(day15, file = file.path(script_output_dir, "processed_data/3_singlets_d15.rds"))
 ```
 
 ```{r}
@@ -241,10 +234,8 @@ d15qc <- d15_qc_counts %>%
              "5. Singlets by GEX" = d15_gex_singlet_count) %>%
   tidyr::pivot_longer(everything(), names_to = "Step", values_to = "Count")
 
-if(save_output) {
-  write_csv(d3qc, file = file.path(script_output_dir, "processed_data/d3qc_barplot.csv"))
-  write_csv(d15qc, file = file.path(script_output_dir, "processed_data/d15qc_barplot.csv"))
-}
+write_csv(d3qc, file = file.path(script_output_dir, "processed_data/d3qc_barplot.csv"))
+write_csv(d15qc, file = file.path(script_output_dir, "processed_data/d15qc_barplot.csv"))
 
 
 # Plot
@@ -279,25 +270,23 @@ d3qc_plot
 d15qc_plot <- make_qc_graph(d15qc, "Day 15")
 d15qc_plot
 
-if (save_output) {
-  # Day 3
-  ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.png"), plot = d3qc_plot,
-         dpi = 300, width = 4, height = 2, device = "png")
+# Day 3
+ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.png"), plot = d3qc_plot,
+       dpi = 300, width = 4, height = 2, device = "png")
 
-  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.pdf"), 
-            width=4, height=2, bg = "transparent", family = "Arial")
-  print(d3qc_plot)
-  dev.off()
-  
-  # Day 15
-  ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.png"), plot = d15qc_plot,
-         dpi = 300, width = 4, height = 2, device = "png")
+cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.pdf"), 
+          width=4, height=2, bg = "transparent", family = "Arial")
+print(d3qc_plot)
+dev.off()
 
-  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.pdf"), 
-            width=4, height=2, bg = "transparent", family = "Arial")
-  print(d15qc_plot)
-  dev.off()
-}
+# Day 15
+ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.png"), plot = d15qc_plot,
+       dpi = 300, width = 4, height = 2, device = "png")
+
+cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.pdf"), 
+          width=4, height=2, bg = "transparent", family = "Arial")
+print(d15qc_plot)
+dev.off()
 ```
 
 ## How many cells do we have to work with now?
@@ -381,34 +370,32 @@ forleg <- bind_rows(d3_count_df, d15_count_df) %>%
                                  "BCG10", "BCG11", "BCG12", "BCG13", "BCG16"))
 forleg
 
-if (save_output) {
-  # Dotplots Day 3
-  ggsave(file.path(script_output_dir, "out/SuppFig4_d3dot.png"), plot = d3dot,
-       dpi = 300, width = 3, height = 4.5, device = "png")
-
-  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d3dot.pdf"), 
-            width=3, height=4.5, bg = "transparent", family = "Arial")
-  print(d3dot)
-  dev.off()
-
-  # Dotplots Day 15
-  ggsave(file.path(script_output_dir, "out/SuppFig4_d15dot.png"), plot = d15dot,
-       dpi = 300, width = 3, height = 4.5, device = "png")
-
-  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d15dot.pdf"), 
-            width=3, height=4.5, bg = "transparent", family = "Arial")
-  print(d15dot)
-  dev.off()
-  
-  # Legend
-  ggsave(file.path(script_output_dir, "out/SuppFig4_legend.png"), plot = forleg,
+# Dotplots Day 3
+ggsave(file.path(script_output_dir, "out/SuppFig4_d3dot.png"), plot = d3dot,
      dpi = 300, width = 3, height = 4.5, device = "png")
 
-  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_legend.pdf"), 
-            width=3, height=4.5, bg = "transparent", family = "Arial")
-  print(forleg)
-  dev.off()
-}
+cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d3dot.pdf"), 
+          width=3, height=4.5, bg = "transparent", family = "Arial")
+print(d3dot)
+dev.off()
+
+# Dotplots Day 15
+ggsave(file.path(script_output_dir, "out/SuppFig4_d15dot.png"), plot = d15dot,
+     dpi = 300, width = 3, height = 4.5, device = "png")
+
+cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d15dot.pdf"), 
+          width=3, height=4.5, bg = "transparent", family = "Arial")
+print(d15dot)
+dev.off()
+
+# Legend
+ggsave(file.path(script_output_dir, "out/SuppFig4_legend.png"), plot = forleg,
+   dpi = 300, width = 3, height = 4.5, device = "png")
+
+cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_legend.pdf"), 
+          width=3, height=4.5, bg = "transparent", family = "Arial")
+print(forleg)
+dev.off()
 ```
 
 Tables
@@ -629,40 +616,38 @@ arm_legend <- cowplot::get_legend(p3_with_leg)
 saveRDS(d3_filtered, file = file.path(script_output_dir, "processed_data/4_d3_filtered.rds"))
 
 # Plots
-if (save_output) {
-    cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d3.pdf"), 
-              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-  print(p1)
-  print(v1)
-  print(v2)
-  print(h1)
-  print(p2)
-  print(p3)
-  print(h2)
-  print(h3)
-  dev.off()
-  
-  # PNG
-  ggsave(file.path(script_output_dir, "out/umap_d3_seurat.png"), plot = p1,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/umap_d3_ptid.png"), plot = p2,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/umap_d3_arm.png"), plot = p3,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/legend_arm.png"), plot = arm_legend,
-       dpi = 300, width = 2, height = 1, device = "png")
-  
+cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d3.pdf"), 
+          width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+print(p1)
+print(v1)
+print(v2)
+print(h1)
+print(p2)
+print(p3)
+print(h2)
+print(h3)
+dev.off()
 
-  # SVG
-  ggsave(file.path(script_output_dir, "out/umap_d3_seurat.svg"), plot = p1,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/umap_d3_ptid.svg"), plot = p2,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/umap_d3_arm.svg"), plot = p3,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/legend_arm.svg"), plot = arm_legend,
-       dpi = 300, width = 2, height = 1, device = "svg")
-}
+# PNG
+ggsave(file.path(script_output_dir, "out/umap_d3_seurat.png"), plot = p1,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/umap_d3_ptid.png"), plot = p2,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/umap_d3_arm.png"), plot = p3,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/legend_arm.png"), plot = arm_legend,
+     dpi = 300, width = 2, height = 1, device = "png")
+
+
+# SVG
+ggsave(file.path(script_output_dir, "out/umap_d3_seurat.svg"), plot = p1,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/umap_d3_ptid.svg"), plot = p2,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/umap_d3_arm.svg"), plot = p3,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/legend_arm.svg"), plot = arm_legend,
+     dpi = 300, width = 2, height = 1, device = "svg")
 ```
 
 ## Day 15
@@ -814,35 +799,33 @@ p12 + p13
 saveRDS(d15_filtered, file = file.path(script_output_dir, "processed_data/4_d15_filtered.rds"))
 
 # Plots
-if (save_output) {
-    cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d15.pdf"), 
-              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-  print(p11)
-  print(v11)
-  print(v12)
-  print(h11)
-  print(p12)
-  print(p13)
-  print(h12)
-  print(h13)
-  dev.off()
+cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d15.pdf"), 
+            width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+print(p11)
+print(v11)
+print(v12)
+print(h11)
+print(p12)
+print(p13)
+print(h12)
+print(h13)
+dev.off()
 
-  # PNG
-  ggsave(file.path(script_output_dir, "out/umap_d15_seurat.png"), plot = p11,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/umap_d15_ptid.png"), plot = p12,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/umap_d15_arm.png"), plot = p13,
-       dpi = 300, width = 6, height = 6, device = "png")
+# PNG
+ggsave(file.path(script_output_dir, "out/umap_d15_seurat.png"), plot = p11,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/umap_d15_ptid.png"), plot = p12,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/umap_d15_arm.png"), plot = p13,
+     dpi = 300, width = 6, height = 6, device = "png")
 
-  # SVG
-  ggsave(file.path(script_output_dir, "out/umap_d15_seurat.svg"), plot = p11,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/umap_d15_ptid.svg"), plot = p12,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/umap_d15_arm.svg"), plot = p13,
-       dpi = 300, width = 6, height = 6, device = "svg")
-}
+# SVG
+ggsave(file.path(script_output_dir, "out/umap_d15_seurat.svg"), plot = p11,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/umap_d15_ptid.svg"), plot = p12,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/umap_d15_arm.svg"), plot = p13,
+     dpi = 300, width = 6, height = 6, device = "svg")
 ```
 
 # Session Info

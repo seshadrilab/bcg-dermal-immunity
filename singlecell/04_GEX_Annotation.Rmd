@@ -30,9 +30,6 @@ library(grDevices)
 
 set.seed(4)
 
-# Save all output, instead of just minimum required objects for the next scripts
-save_output <- TRUE
-
 # Top-level folder where script outputs should be stored
 script_output_dir <- file.path(here::here(), "output")
 
@@ -202,10 +199,8 @@ Save
 day3_clstr_filt <- day3_clstr
 day15_clstr_filt <- day15_clstr
 
-if(save_output) {
-  saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d3.rds"))
-  saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d15.rds"))
-}
+saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d3.rds"))
+saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d15.rds"))
 ```
 
 ```{r}
@@ -408,14 +403,12 @@ d3_8 <- make_marker_plot(day3_clstr_filt, "DMKN")
 d3_grid <- plot_grid(d3_1, d3_2, d3_3, d3_4, d3_5, d3_6, d3_7, d3_8, nrow = 2)
 d3_grid
 
-if (save_output) {
-  # PNG
-  ggsave(file.path(script_output_dir, "out/umap_markers_d3.png"), plot = d3_grid,
-       dpi = 300, width = 10, height = 6, device = "png")
-  # SVG
-  ggsave(file.path(script_output_dir, "out/umap_markers_d3.svg"), plot = d3_grid,
-       dpi = 300, width = 10, height = 6, device = "svg")
-}
+# PNG
+ggsave(file.path(script_output_dir, "out/umap_markers_d3.png"), plot = d3_grid,
+     dpi = 300, width = 10, height = 6, device = "png")
+# SVG
+ggsave(file.path(script_output_dir, "out/umap_markers_d3.svg"), plot = d3_grid,
+     dpi = 300, width = 10, height = 6, device = "svg")
 ```
 
 **Day 15**
@@ -433,14 +426,13 @@ d15_8 <- make_marker_plot(day15_clstr_filt, "DMKN")
 d15_grid <- plot_grid(d15_1, d15_2, d15_3, d15_4, d15_5, d15_6, d15_7, d15_8, nrow = 2)
 d15_grid
 
-if (save_output) {
-  # PNG
-  ggsave(file.path(script_output_dir, "out/umap_markers_d15.png"), plot = d15_grid,
-       dpi = 300, width = 10, height = 6, device = "png")
-  # SVG
-  ggsave(file.path(script_output_dir, "out/umap_markers_d15.svg"), plot = d15_grid,
-       dpi = 300, width = 10, height = 6, device = "svg")
-}
+
+# PNG
+ggsave(file.path(script_output_dir, "out/umap_markers_d15.png"), plot = d15_grid,
+     dpi = 300, width = 10, height = 6, device = "png")
+# SVG
+ggsave(file.path(script_output_dir, "out/umap_markers_d15.svg"), plot = d15_grid,
+     dpi = 300, width = 10, height = 6, device = "svg")
 ```
 
 # Sub-cluster the immune cells
@@ -550,10 +542,8 @@ consol_azi <- function(in_obj) {
 day3_sub_annot <- consol_azi(day3_sub_annot)
 day15_sub_annot <- consol_azi(day15_sub_annot)
 
-if(save_output) {
-  saveRDS(day3_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d3.rds"))
-  saveRDS(day15_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d15.rds"))
-}
+saveRDS(day3_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d3.rds"))
+saveRDS(day15_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d15.rds"))
 ```
 
 ```{r}
@@ -725,10 +715,8 @@ d15_sub_noleg <- DimPlot(d15_subset, group.by = "eb_idents", pt.size = 0.4,
 Save objects
 
 ```{r}
-if (save_output) {
-  saveRDS(d3_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
-  saveRDS(d15_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
-}
+saveRDS(d3_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
+saveRDS(d15_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
 
 d3_subset <- readRDS(file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
 d15_subset <- readRDS(file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
@@ -924,19 +912,17 @@ d15_grid_imm + DimPlot(d15_subset, pt.size = 0.4, group.by = "eb_idents",
 Save
 
 ```{r}
-if (save_output) {
-  # PNG
-  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.png"), plot = d3_grid_imm,
-       dpi = 300, width = 6, height = 6, device = "png")
-  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.png"), plot = d15_grid_imm,
-       dpi = 300, width = 6, height = 6, device = "png")
+# PNG
+ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.png"), plot = d3_grid_imm,
+     dpi = 300, width = 6, height = 6, device = "png")
+ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.png"), plot = d15_grid_imm,
+     dpi = 300, width = 6, height = 6, device = "png")
 
-  # SVG
-  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.svg"), plot = d3_grid_imm,
-       dpi = 300, width = 6, height = 6, device = "svg")
-  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.svg"), plot = d15_grid_imm,
-       dpi = 300, width = 6, height = 6, device = "svg")
-}
+# SVG
+ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.svg"), plot = d3_grid_imm,
+     dpi = 300, width = 6, height = 6, device = "svg")
+ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.svg"), plot = d15_grid_imm,
+     dpi = 300, width = 6, height = 6, device = "svg")
 ```
 
 
@@ -1034,23 +1020,21 @@ saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/9_f
 saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
 
 # QC PDF
-if (save_output) {
-    cairo_pdf(file=file.path(script_output_dir, "out/qc_annotation.pdf"), 
-              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-  print(cd45_d3)
-  print(cd45_d15)
-  print(d1 + d2)
-  print(d3 + d4)
-  print(d5 + d6)
-  print(ft1)
-  print(ft2)
-  print(ft3)
-  print(ft4)
-  print(ft5)
-  print(ft6)
-  print(mastplt)
-  dev.off()
-}
+cairo_pdf(file=file.path(script_output_dir, "out/qc_annotation.pdf"), 
+          width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+print(cd45_d3)
+print(cd45_d15)
+print(d1 + d2)
+print(d3 + d4)
+print(d5 + d6)
+print(ft1)
+print(ft2)
+print(ft3)
+print(ft4)
+print(ft5)
+print(ft6)
+print(mastplt)
+dev.off()
 ```
 
 # Session Info

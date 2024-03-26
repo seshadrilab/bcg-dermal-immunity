@@ -31,8 +31,6 @@ library(ggplot2)
 
 set.seed(4)
 
-# Save all output, instead of just minimum required objects for the next scripts
-save_output <- TRUE
 script_output_dir <- file.path(here::here(), "output")
 
 # Create folders for data
@@ -306,10 +304,8 @@ label <- function(dm) {
 day3_labelled <- label(day3_dm)
 day15_labelled <- label(day15_dm)
 
-if(save_output) {
-  saveRDS(day3_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d3.rds"))
-  saveRDS(day15_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d15.rds"))
-}
+saveRDS(day3_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d3.rds"))
+saveRDS(day15_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d15.rds"))
 ```
 
 # QC

@@ -26,8 +26,6 @@ library(ggplot2)
 library(cowplot)
 
 set.seed(4)
-# Save all output, instead of just minimum required objects for the next scripts
-save_output <- TRUE
 
 # Top-level folder where script outputs should be stored
 script_output_dir <- file.path(here::here(), "output")
@@ -174,13 +172,11 @@ d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]])
 Save plots
 
 ```{r}
-if (save_output) {
-  cairo_pdf(file=file.path(script_output_dir, "out/qc_adt_vlnplots.pdf"), width=8, height=5,
-        onefile = TRUE, bg = "transparent", family = "Arial") 
-  print(d3_plts[[1]] / (d3_plts[[2]] | d3_plts[[3]]))
-  print(d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]]))
-  dev.off()
-}
+cairo_pdf(file=file.path(script_output_dir, "out/qc_adt_vlnplots.pdf"), width=8, height=5,
+    onefile = TRUE, bg = "transparent", family = "Arial") 
+print(d3_plts[[1]] / (d3_plts[[2]] | d3_plts[[3]]))
+print(d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]]))
+dev.off()
 ```
 
 # Background subtract
@@ -242,12 +238,10 @@ day15[["ADT_bc"]] <- d15_adt_assay
 day15[["ADT_bc"]] <- SetAssayData(day15[["ADT_bc"]], layer = "data", new.data = d15_bc_adt)
 
 
-if (save_output) {
-  saveRDS(day3, file = file.path(script_output_dir, 
-                                      "processed_data/5_singlets_with_adt_d3.rds"))
-  saveRDS(day15, file = file.path(script_output_dir, 
-                                      "processed_data/5_singlets_with_adt_d15.rds"))
-}
+saveRDS(day3, file = file.path(script_output_dir, 
+                                    "processed_data/5_singlets_with_adt_d3.rds"))
+saveRDS(day15, file = file.path(script_output_dir, 
+                                    "processed_data/5_singlets_with_adt_d15.rds"))
 ```
 
 # Visualize expression of 'working' ADTs
