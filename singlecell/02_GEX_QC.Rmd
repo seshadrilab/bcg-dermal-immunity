@@ -34,7 +34,7 @@ set.seed(4)
 save_output <- TRUE
 
 # Top-level folder where script outputs should be stored
-script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+script_output_dir <- file.path(here::here(), "output")
 
 day3_singlets <- readRDS(file = file.path(script_output_dir, "processed_data/2_dm_singlets_d3.rds"))
 day15_singlets <- readRDS(file = file.path(script_output_dir, "processed_data/2_dm_singlets_d15.rds"))

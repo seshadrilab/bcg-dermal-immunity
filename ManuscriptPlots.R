@@ -21,7 +21,7 @@ set.seed(4)
 ## Load data ##
 ###############
 
-outdir <- "/home/emmabishop/workspace/bcg_challenge_manuscript_inh"
+outdir <- file.path(here::here(), "output/out")
 
 # Heatmap data from Andrew Fiore-Gartland
 heat_dat <- read_csv("~/Downloads/deg_heatmap_values.csv")

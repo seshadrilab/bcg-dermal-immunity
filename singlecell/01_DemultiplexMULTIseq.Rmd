@@ -33,7 +33,7 @@ set.seed(4)
 
 # Save all output, instead of just minimum required objects for the next scripts
 save_output <- TRUE
-script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+script_output_dir <- file.path(here::here(), "output")
 
 # Create folders for data
 if(!dir.exists(file.path(script_output_dir))) {
