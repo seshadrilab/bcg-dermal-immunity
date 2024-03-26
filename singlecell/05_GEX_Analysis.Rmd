@@ -406,7 +406,7 @@ d3_circle_imm <- netVisual_circle(day3_cellchat_sub_imm@net$weight,
 d3_circle_imm
 
 # Save
-cairo_pdf(file = file.path(script_output_dir, "plots/d3_cellchat.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_d3_cellchat.pdf"), 
           width=5, height=5,
           onefile = TRUE, bg = "transparent", family = "Arial")
 print(d3_circle_imm)
@@ -459,7 +459,7 @@ d15_circle_imm <- netVisual_circle(day15_cellchat_sub_imm@net$weight,
 d15_circle_imm
 
 # Save
-cairo_pdf(file = file.path(script_output_dir, "plots/d15_cellchat.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_d15_cellchat.pdf"), 
           width=5, height=5,
           onefile = TRUE, bg = "transparent", family = "Arial")
 print(d15_circle_imm)

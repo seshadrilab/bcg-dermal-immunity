@@ -402,10 +402,6 @@ d3_8 <- make_marker_plot(day3_clstr_filt, "DMKN")
 
 d3_grid <- plot_grid(d3_1, d3_2, d3_3, d3_4, d3_5, d3_6, d3_7, d3_8, nrow = 2)
 d3_grid
-
-# PNG
-ggsave(file.path(script_output_dir, "plots/umap_markers_d3.png"), plot = d3_grid,
-     dpi = 300, width = 10, height = 6, device = "png")
 ```
 
 **Day 15**
@@ -422,11 +418,6 @@ d15_8 <- make_marker_plot(day15_clstr_filt, "DMKN")
 
 d15_grid <- plot_grid(d15_1, d15_2, d15_3, d15_4, d15_5, d15_6, d15_7, d15_8, nrow = 2)
 d15_grid
-
-
-# PNG
-ggsave(file.path(script_output_dir, "plots/umap_markers_d15.png"), plot = d15_grid,
-     dpi = 300, width = 10, height = 6, device = "png")
 ```
 
 # Sub-cluster the immune cells
@@ -903,17 +894,6 @@ d15_grid_imm + DimPlot(d15_subset, pt.size = 0.4, group.by = "eb_idents",
                        cols = subtype_cols)
 ```
 
-Save
-
-```{r}
-# PNG
-ggsave(file.path(script_output_dir, "plots/umap_markers_immune_d3.png"), plot = d3_grid_imm,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/umap_markers_immune_d15.png"), plot = d15_grid_imm,
-     dpi = 300, width = 6, height = 6, device = "png")
-```
-
-
 ## Replace SingleR labels with Azimuth ones
 
 Following instructions from [issue #1748](https://github.com/satijalab/seurat/issues/1748). I'll replace the SingleR_prunedlabels with the more detailed Azimuth ones to create a 'detailed' meta.data column. I'll replace my consolidated SingleR annotations with my consolidated Azimuth ones to create a 'consolidated' meta.data column.
@@ -1006,23 +986,6 @@ Save
 # These are necessary for the next script
 saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
 saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
-
-# QC PDF
-cairo_pdf(file=file.path(script_output_dir, "plots/qc_annotation.pdf"), 
-          width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-print(cd45_d3)
-print(cd45_d15)
-print(d1 + d2)
-print(d3 + d4)
-print(d5 + d6)
-print(ft1)
-print(ft2)
-print(ft3)
-print(ft4)
-print(ft5)
-print(ft6)
-print(mastplt)
-dev.off()
 ```
 
 # Session Info

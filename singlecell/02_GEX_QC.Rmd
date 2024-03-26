@@ -167,18 +167,6 @@ f2 <- FeatureScatter(day15,
 f1 + f2
 ```
 
-Save
-
-```{r}
-# Dots
-cairo_pdf(file=file.path(script_output_dir, "plots/qc_scdblfinder.pdf"), width=5, height=5,
-      onefile = TRUE, bg = "transparent", family = "Arial") 
-print(f1)
-print(f2)
-dev.off()
-```
-
-
 Doublet count per PTID
 
 **Day 3**
@@ -614,29 +602,6 @@ arm_legend <- cowplot::get_legend(p3_with_leg)
 
 # Object
 saveRDS(d3_filtered, file = file.path(script_output_dir, "processed_data/4_d3_filtered.rds"))
-
-# Plots
-cairo_pdf(file=file.path(script_output_dir, "plots/qc_clustering_d3.pdf"), 
-          width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-print(p1)
-print(v1)
-print(v2)
-print(h1)
-print(p2)
-print(p3)
-print(h2)
-print(h3)
-dev.off()
-
-# PNG
-ggsave(file.path(script_output_dir, "plots/umap_d3_seurat.png"), plot = p1,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/umap_d3_ptid.png"), plot = p2,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/umap_d3_arm.png"), plot = p3,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/legend_arm.png"), plot = arm_legend,
-     dpi = 300, width = 2, height = 1, device = "png")
 ```
 
 ## Day 15
@@ -786,27 +751,6 @@ p12 + p13
 ```{r}
 # Object
 saveRDS(d15_filtered, file = file.path(script_output_dir, "processed_data/4_d15_filtered.rds"))
-
-# Plots
-cairo_pdf(file=file.path(script_output_dir, "plots/qc_clustering_d15.pdf"), 
-            width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
-print(p11)
-print(v11)
-print(v12)
-print(h11)
-print(p12)
-print(p13)
-print(h12)
-print(h13)
-dev.off()
-
-# PNG
-ggsave(file.path(script_output_dir, "plots/umap_d15_seurat.png"), plot = p11,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/umap_d15_ptid.png"), plot = p12,
-     dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "plots/umap_d15_arm.png"), plot = p13,
-     dpi = 300, width = 6, height = 6, device = "png")
 ```
 
 # Session Info
