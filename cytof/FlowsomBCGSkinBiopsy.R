@@ -186,7 +186,7 @@ cytof_heat_plot <- plotExprHeatmap(sce, features = "type",
                 col_dend = FALSE)
 cytof_heat_plot
 
-cairo_pdf(file = "/home/emmabishop/workspace/bcg_challenge_manuscript_inh/Fig4_ccytof_heatmap.pdf", 
+cairo_pdf(file = file.path(outdir, "plots/Fig4_cytof_heatmap.pdf"), 
           width=9, height=5,
           onefile = TRUE, bg = "transparent", family = "Arial")
 print(cytof_heat_plot)
@@ -256,9 +256,7 @@ table_out <- table %>%
            .default = "Day_15"),
          .after = "cluster_id")
 
-write_csv(table_out, file.path(outdir, "BCG_Skin_Biopsy_CD45_Subsets.csv"))
-
-# write.csv(table, "C:/Users/Steven Makatsa/OneDrive - UW/Shared Documents - SeshadriLab/Members/YuKrystle/Projects_and_Data/BCG_Skin_Biopsies/Mass Cytometry/ProcessedData/Rerun FlowSOM_SM/out/BCG_Skin_Biopsy_CD45_Subsets_All markers.csv", row.names=FALSE)
+write_csv(table_out, file.path(outdir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
 
 plotDiffHeatmap(sce, rowData(da_res2$res), all = TRUE, fdr = FDR_cutoff)
 
