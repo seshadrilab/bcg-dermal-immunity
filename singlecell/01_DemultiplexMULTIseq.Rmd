@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Notes
 
-At first I used HTODemux for Day 3 and MULTIseqDemux for Day 15 because the ridge plots had better separation at Day 3 that way. However, we get 1664 more singlest with MULTIseqDemux at Day 3 and the hashtag assignment is almost entirely in agreement between the two tools. So I've decided to use MULTIseqDemux for both timepoint for consistency.
+At first I used HTODemux for Day 3 and MULTIseqDemux for Day 15 because the ridge plots had better separation at Day 3 that way. However, we get 1664 more singlets with MULTIseqDemux at Day 3 and the hashtag assignment is almost entirely in agreement between the two tools. So I've decided to use MULTIseqDemux for both timepoint for consistency.
 
 # Load libraries and data
 
