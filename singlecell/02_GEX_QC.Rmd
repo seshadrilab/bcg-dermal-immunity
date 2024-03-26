@@ -1,0 +1,853 @@
+---
+title: "GEX QC (BCG Challenge 10X)"
+author: "Emma Bishop"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries and data
+
+```{r, message=FALSE}
+library(Seurat)
+library(scDblFinder)
+library(knitr)
+library(ggbeeswarm)
+library(ggh4x)
+library(grDevices)
+library(gridExtra)
+library(tidyverse)
+
+set.seed(4)
+
+# Save all output, instead of just minimum required objects for the next scripts
+save_output <- TRUE
+
+# Top-level folder where script outputs should be stored
+script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+
+day3_singlets <- readRDS(file = file.path(script_output_dir, "processed_data/2_dm_singlets_d3.rds"))
+day15_singlets <- readRDS(file = file.path(script_output_dir, "processed_data/2_dm_singlets_d15.rds"))
+
+DefaultAssay(day3_singlets) <- "RNA"
+DefaultAssay(day15_singlets) <- "RNA"
+
+d3_qc_counts <- readRDS(file = file.path(script_output_dir, "processed_data/2_d3_qc_df.rds"))
+d15_qc_counts <- readRDS(file = file.path(script_output_dir, "processed_data/2_d15_qc_df.rds"))
+```
+
+# Visualize feature counts, umi counts, percent mitochondria
+
+```{r}
+day3_singlets[["percent.mt"]] <- PercentageFeatureSet(day3_singlets, pattern = "^MT-")
+day15_singlets[["percent.mt"]] <- PercentageFeatureSet(day15_singlets, pattern = "^MT-")
+```
+
+**Day 3**
+
+```{r, message=FALSE, fig.width=12, fig.height=10}
+VlnPlot(day3_singlets, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+**Day 15**
+
+```{r, message=FALSE, fig.width=12, fig.height=10}
+VlnPlot(day15_singlets, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+# Filter
+
+Starting number of cells
+
+**Day 3**
+
+```{r}
+table(day3_singlets$PTID)
+length(day3_singlets$orig.ident)
+```
+
+**Day 15**
+
+```{r}
+table(day15_singlets$PTID)
+length(day15_singlets$orig.ident)
+```
+
+Our cutoffs:
+
+* feature counts > 200
+* mitochondrial counts < 10%
+
+**Note that for Jim Kublin's talk in the spring we used < 5% mitochondrial counts**
+
+```{r, message=FALSE}
+# Day 3
+day3 <- subset(day3_singlets, subset = nFeature_RNA > 200)
+d3_200_gene_count <- length(day3$orig.ident)  # Save QC counts
+day3 <- subset(day3, subset = percent.mt < 10)
+d3_10_mt_count <- length(day3$orig.ident)  # Save QC counts
+
+# Day 15
+day15 <- subset(day15_singlets, subset = nFeature_RNA > 200)
+d15_200_gene_count <- length(day15$orig.ident)  # Save QC counts
+day15 <- subset(day15, subset = percent.mt < 10)
+d15_10_mt_count <- length(day15$orig.ident)  # Save QC counts
+
+rm(day3_singlets)
+rm(day15_singlets)
+```
+
+Current number of cells
+
+**Day 3**
+
+```{r}
+table(day3$PTID)
+length(day3$orig.ident)
+```
+
+**Day 15**
+
+```{r}
+table(day15$PTID)
+length(day15$orig.ident)
+```
+
+# Identify within-sample doublets
+
+Remove cells from hashtags that didn't work (<= 10 cells). Low cell numbers cause scDblFinder errors.
+
+```{r}
+day3 <- subset(day3, subset = PTID %in% c("11"), invert = TRUE)
+day15 <- subset(day15, subset = PTID %in% c("5", "7", "8", "12"), invert = TRUE)
+```
+
+```{r}
+doublet_finder <- function(in_obj) {
+  sce <- as.SingleCellExperiment(in_obj)
+  sce <- scDblFinder(sce, samples = "PTID")
+  in_obj$scDblFinder.class <- sce@colData$scDblFinder.class
+  in_obj$scDblFinder.score <- sce@colData$scDblFinder.score
+  in_obj$scDblFinder.weighted <- sce@colData$scDblFinder.weighted
+  in_obj$scDblFinder.class <- factor(in_obj$scDblFinder.class, levels=c("singlet","doublet"))
+
+  return(in_obj)
+}
+
+day3 <- doublet_finder(day3)
+day15 <- doublet_finder(day15)
+```
+
+Scatter plots
+
+```{r}
+f1 <- FeatureScatter(day3,
+                     feature1 = "nCount_RNA",
+                     feature2 = "nFeature_RNA",
+                     group.by = "scDblFinder.class",
+                     cols = c(alpha("blue", 0.01), alpha("red", 0.5))) +
+  scale_y_continuous(trans = "log10") +
+  scale_x_continuous(trans = "log10") +
+  ggtitle("Day 3")
+f2 <- FeatureScatter(day15,
+                     feature1 = "nCount_RNA",
+                     feature2 = "nFeature_RNA",
+                     group.by = "scDblFinder.class",
+                     cols = c(alpha("blue", 0.01), alpha("red", 0.5))) +
+  scale_y_continuous(trans = "log10") +
+  scale_x_continuous(trans = "log10") +
+  ggtitle("Day 15")
+f1 + f2
+```
+
+Save
+
+```{r}
+if (save_output) {
+  # Dots
+  cairo_pdf(file=file.path(script_output_dir, "out/qc_scdblfinder.pdf"), width=5, height=5,
+        onefile = TRUE, bg = "transparent", family = "Arial") 
+  print(f1)
+  print(f2)
+  dev.off()
+}
+```
+
+
+Doublet count per PTID
+
+**Day 3**
+
+```{r}
+table(day3$scDblFinder.class, day3$PTID)
+```
+
+**Day 15**
+
+```{r}
+table(day15$scDblFinder.class, day15$PTID)
+```
+
+Keep singlets
+
+```{r}
+day3 <- subset(day3, subset = scDblFinder.class == "singlet")
+day15 <- subset(day15, subset = scDblFinder.class == "singlet")
+
+# Save QC counts
+d3_gex_singlet_count <- length(day3$orig.ident)
+d15_gex_singlet_count <- length(day15$orig.ident)
+
+if(save_output) {
+  saveRDS(day3, file = file.path(script_output_dir, "processed_data/3_singlets_d3.rds"))
+  saveRDS(day15, file = file.path(script_output_dir, "processed_data/3_singlets_d15.rds"))
+}
+```
+
+```{r}
+day3 <- readRDS(file = file.path(script_output_dir, "processed_data/3_singlets_d3.rds"))
+day15 <- readRDS(file = file.path(script_output_dir, "processed_data/3_singlets_d15.rds"))
+```
+
+# QC plots
+
+Step bar graph
+
+```{r}
+# Prep dataframes
+d3qc <- d3_qc_counts %>%
+  dplyr::rename("1. Cell Ranger filtered feature output" = "d3_start_count",
+                "2. Demultiplex with HTOs" = "d3_hto_singlet_count") %>%
+  add_column("3. >200 unique genes/cell" = d3_200_gene_count, 
+             "4. <10% MT counts" = d3_10_mt_count, 
+             "5. Singlets by GEX" = d3_gex_singlet_count) %>%
+  tidyr::pivot_longer(everything(), names_to = "Step", values_to = "Count")
+
+d15qc <- d15_qc_counts %>%
+  dplyr::rename("1. Cell Ranger filtered feature output" = "d15_start_count",
+                "2. Demultiplex with HTOs" = "d15_hto_singlet_count") %>%
+  add_column("3. >200 unique genes/cell" = d15_200_gene_count, 
+             "4. <10% MT counts" = d15_10_mt_count, 
+             "5. Singlets by GEX" = d15_gex_singlet_count) %>%
+  tidyr::pivot_longer(everything(), names_to = "Step", values_to = "Count")
+
+if(save_output) {
+  write_csv(d3qc, file = file.path(script_output_dir, "processed_data/d3qc_barplot.csv"))
+  write_csv(d15qc, file = file.path(script_output_dir, "processed_data/d15qc_barplot.csv"))
+}
+
+
+# Plot
+make_qc_graph <- function(counts, title) {
+  qc_plot <- ggplot(counts, aes(x = Step, y = Count)) +
+    geom_col() +
+    theme_bw() +
+    geom_text(aes(label = Count),
+              position = position_stack(vjust = 0.5),
+              color = "white",
+              size = 4) +
+    theme(text = element_text(family = "Arial"),
+          axis.title.x = element_text(size = 8),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(color = "black", size = 8),
+          axis.text.y = element_text(color = "black", size = 8),
+          plot.title = element_text(size = 8, hjust = 0.5),
+          panel.grid = element_blank(),
+          panel.border = element_blank(),
+          axis.line.y.left = element_line(color = "black"),
+          axis.line.x.bottom = element_line(color = "black")) +
+    scale_y_continuous(n.breaks = 5) +
+    scale_x_discrete(limits = rev) +
+    coord_flip() +
+    labs(y = "# of cell barcodes remaining after QC",
+         title = title)
+}
+
+d3qc_plot <- make_qc_graph(d3qc, "Day 3")
+d3qc_plot
+
+d15qc_plot <- make_qc_graph(d15qc, "Day 15")
+d15qc_plot
+
+if (save_output) {
+  # Day 3
+  ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.png"), plot = d3qc_plot,
+         dpi = 300, width = 4, height = 2, device = "png")
+
+  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d3.pdf"), 
+            width=4, height=2, bg = "transparent", family = "Arial")
+  print(d3qc_plot)
+  dev.off()
+  
+  # Day 15
+  ggsave(file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.png"), plot = d15qc_plot,
+         dpi = 300, width = 4, height = 2, device = "png")
+
+  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_qc_barplot_d15.pdf"), 
+            width=4, height=2, bg = "transparent", family = "Arial")
+  print(d15qc_plot)
+  dev.off()
+}
+```
+
+## How many cells do we have to work with now?
+
+Dot plots
+
+```{r}
+d3_count_df <- day3@meta.data %>%
+  group_by(ARM, PTID) %>%
+  tally()
+
+d15_count_df <- day15@meta.data %>%
+  group_by(ARM, PTID) %>%
+  tally()
+
+ptid_colors <- c("1" = "salmon", "5" = "orange", "7" = "#7570B3",
+                 "8" = "#0CB702", "9" = "#A6761D", "10" = "#00BFC4",
+                 "11" = "#C77CFF", "12" = "#FF61CC", "13" = "darkgreen",
+                 "16" = "darkblue")
+
+
+make_dotplot <- function(count_df, day, ptid_colors, no_legend) {
+  count_pval <- wilcox.test(n ~ ARM, data = count_df, paired = FALSE)$p.value
+  
+  count_test_df <- data.frame(p = count_pval) %>%
+    mutate(p.text = if_else(p < 0.001, "p<0.001", 
+                            paste0("p=", formatC(round(p, 3), format='f', digits=3))))
+  
+  count_plot <- ggplot(count_df, aes(x = ARM, y = n)) +
+    theme_bw() +
+    stat_summary(fun = median, geom = "crossbar", width = 0.3) +
+    geom_quasirandom(size = 4, shape = 16, width = 0.3, aes(color = PTID)) +
+    theme(text = element_text(family = "Arial"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(size=20),
+          axis.text.y = element_text(color="black", size=20),
+          axis.text.x = element_text(color="black", size=20),
+          legend.title = element_text(color="black", size=20),
+          legend.text = element_text(color="black", size=20),
+          legend.position = "bottom",
+          plot.title = element_text(hjust = 0.5, size = 20),
+          plot.margin = margin(0.3, 0.2, 0.1, 0.2, "cm"),
+          panel.grid = element_blank()) +
+    scale_color_manual(values = ptid_colors) +
+    labs(title = as.character(day),
+         y = "Cell count per sample") +
+    force_panelsizes(rows = unit(3.5, "in"),
+                     cols = unit(2, "in"))
+  
+  if(no_legend){
+    count_plot <- count_plot +
+      theme(legend.title = element_blank(),
+            legend.position="none") 
+  }
+  
+  plot_ylims <- ggplot_build(count_plot)$layout$panel_params[[1]]$y.range
+
+  count_plot <- count_plot +
+    annotate("text", x = 1.5, y = plot_ylims[2] + 0.01*diff(plot_ylims),
+             label = count_test_df$p.text, size = 5) +
+    coord_cartesian(ylim = c(plot_ylims[[1]], plot_ylims[[2]] + 0.09*diff(plot_ylims)))
+}
+
+# Dot plots
+d3dot <- make_dotplot(d3_count_df, "Day 3", ptid_colors, no_legend = TRUE)
+d15dot <- make_dotplot(d15_count_df, "Day 15", ptid_colors, no_legend = TRUE)
+grid.arrange(d3dot, d15dot, ncol = 2)
+
+# Get a legend with all the ptids
+forleg <- bind_rows(d3_count_df, d15_count_df) %>%
+  group_by(ARM, PTID) %>%
+  tally() %>%
+  ggplot(aes(x = ARM, y = n, color = PTID)) +
+  geom_jitter() +
+  theme_bw() +
+  theme(legend.title = element_text(color="black", size=14),
+        legend.text = element_text(color="black", size=14)) +
+  guides(colour = guide_legend(override.aes = list(size=4))) +
+  scale_color_manual(values = ptid_colors, 
+                     labels = c("BCG01", "BCG05", "BCG07", "BCG08", "BCG09",
+                                 "BCG10", "BCG11", "BCG12", "BCG13", "BCG16"))
+forleg
+
+if (save_output) {
+  # Dotplots Day 3
+  ggsave(file.path(script_output_dir, "out/SuppFig4_d3dot.png"), plot = d3dot,
+       dpi = 300, width = 3, height = 4.5, device = "png")
+
+  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d3dot.pdf"), 
+            width=3, height=4.5, bg = "transparent", family = "Arial")
+  print(d3dot)
+  dev.off()
+
+  # Dotplots Day 15
+  ggsave(file.path(script_output_dir, "out/SuppFig4_d15dot.png"), plot = d15dot,
+       dpi = 300, width = 3, height = 4.5, device = "png")
+
+  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_d15dot.pdf"), 
+            width=3, height=4.5, bg = "transparent", family = "Arial")
+  print(d15dot)
+  dev.off()
+  
+  # Legend
+  ggsave(file.path(script_output_dir, "out/SuppFig4_legend.png"), plot = forleg,
+     dpi = 300, width = 3, height = 4.5, device = "png")
+
+  cairo_pdf(file = file.path(script_output_dir, "out/SuppFig4_legend.pdf"), 
+            width=3, height=4.5, bg = "transparent", family = "Arial")
+  print(forleg)
+  dev.off()
+}
+```
+
+Tables
+
+```{r}
+# Timepoint, Arm, PTID
+df_d15 <- day15@meta.data %>%
+  group_by(orig.ident, ARM, PTID) %>%
+  tally()
+day3@meta.data %>%
+  group_by(orig.ident, ARM, PTID) %>%
+  tally() %>%
+  bind_rows(df_d15) %>%
+  dplyr::rename("Timepoint" = "orig.ident",
+                "# Cells" = "n") %>%
+  kable(align = "l", caption = "Singlets per Timepoint, Arm, PTID")
+
+# Timepoint, Arm
+dff_d15 <- day15@meta.data %>%
+  group_by(orig.ident, ARM) %>%
+  tally()
+day3@meta.data %>%
+  group_by(orig.ident, ARM) %>%
+  tally() %>%
+  bind_rows(dff_d15) %>%
+  dplyr::rename("Timepoint" = "orig.ident",
+                "# Cells" = "n") %>%
+  kable(align = "l", caption = "Singlets per Timepoint, Arm")
+```
+
+# Cluster
+
+Functions
+
+```{r}
+norm_and_reduce <- function(dm_singlets) {
+  dm_singlets <- SCTransform(dm_singlets, 
+                             vars.to.regress = "percent.mt",
+                             verbose = FALSE)
+  dm_singlets <- RunPCA(dm_singlets, verbose = FALSE)  
+  dm_singlets <- FindNeighbors(dm_singlets, dims = 1:30)
+  dm_singlets <- RunUMAP(dm_singlets, dims = 1:30)
+  return(dm_singlets)
+}
+
+markers_heatmap <- function(obj) {
+  topmarkers <- FindAllMarkers(obj, 
+                            only.pos = TRUE, 
+                            min.pct = 0.25, 
+                            logfc.threshold = 0.25) %>%
+      group_by(cluster) %>%
+      top_n(n = 8, wt = avg_log2FC)
+  
+  heatmap <- DoHeatmap(obj, features = topmarkers$gene) + 
+    NoLegend()
+  return(heatmap)
+}
+```
+
+## Day 3
+
+Normalize, reduce dimensions, cluster. I find that Louvain clusters are more in line with the differences I see with SingleR annotations at Day 15, so using the same method and resolution here.
+
+```{r, message=FALSE}
+day3 <- norm_and_reduce(day3)
+
+day3_clstr <- FindClusters(day3, verbose = FALSE, resolution = 0.5)
+```
+
+### UMAP
+
+```{r, message=FALSE, fig.width=12, fig.height=10}
+p1 <- DimPlot(day3_clstr, pt.size = 0.4, label = TRUE,
+              label.size = 5) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+p1
+```
+
+### Violin plots
+
+Key markers:
+
+* Lymphoid: IL7R
+* Myeloid: LYZ
+* Epithelial: S100A2
+* Connective tissue: DCN
+* Nervous tissue: DCT
+* Endothelial: FLT1
+* Muscle tissue: COL3A1
+* Keratinocyte: DMKN (epidermis-specific secreted protein)
+
+
+```{r}
+v1 <- VlnPlot(day3_clstr, 
+        ncol = 4,
+        features = c("IL7R", "LYZ", "S100A2", "DCN", "DCT", "FLT1", "COL3A1", "DMKN"))
+v1
+```
+
+Feature and RNA counts, percent mito
+
+```{r}
+v2 <- VlnPlot(day3_clstr, 
+        ncol = 1,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+v2
+```
+
+### Heatmap
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+h1 <- markers_heatmap(day3_clstr) + ggtitle("Day 3: GEX cluster markers")
+h1 
+```
+
+### Additional plots for QC
+
+UMAPs by PTID and ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=6}
+p2 <- DimPlot(day3_clstr, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p3 <- DimPlot(day3_clstr, pt.size = 0.4, group.by = "ARM",
+              label.size = 5) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p2 + p3
+```
+
+Heatmaps by PTID and ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+Idents(day3_clstr) <- "PTID"
+h2 <- markers_heatmap(day3_clstr) + ggtitle("Day 3: PTID markers")
+h2
+```
+
+QC: Markers by ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+Idents(day3_clstr) <- "ARM"
+h3 <- markers_heatmap(day3_clstr) + ggtitle("Day 3: ARM markers")
+h3
+```
+
+### Conclusions
+
+The clusters make sense, except cluster 13 which is probably dying cells. Remove cluster 13.
+
+```{r}
+d3_filtered <- subset(day3_clstr, subset = seurat_clusters == "13", invert = TRUE)
+
+# Remake UMAPs
+Idents(d3_filtered) <- "seurat_clusters"
+p1 <- DimPlot(d3_filtered, pt.size = 0.4, label = TRUE,
+              label.size = 5) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+p1
+
+p2 <- DimPlot(d3_filtered, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p3 <- DimPlot(d3_filtered, pt.size = 0.4, group.by = "ARM",
+              label.size = 5) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p2 + p3
+
+
+p3_with_leg <- DimPlot(d3_filtered, pt.size = 0.4, group.by = "ARM",
+              label.size = 5) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "bottom") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+p3_with_leg
+```
+
+**Save**
+
+```{r}
+arm_legend <- cowplot::get_legend(p3_with_leg)
+
+# Object
+saveRDS(d3_filtered, file = file.path(script_output_dir, "processed_data/4_d3_filtered.rds"))
+
+# Plots
+if (save_output) {
+    cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d3.pdf"), 
+              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+  print(p1)
+  print(v1)
+  print(v2)
+  print(h1)
+  print(p2)
+  print(p3)
+  print(h2)
+  print(h3)
+  dev.off()
+  
+  # PNG
+  ggsave(file.path(script_output_dir, "out/umap_d3_seurat.png"), plot = p1,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/umap_d3_ptid.png"), plot = p2,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/umap_d3_arm.png"), plot = p3,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/legend_arm.png"), plot = arm_legend,
+       dpi = 300, width = 2, height = 1, device = "png")
+  
+
+  # SVG
+  ggsave(file.path(script_output_dir, "out/umap_d3_seurat.svg"), plot = p1,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/umap_d3_ptid.svg"), plot = p2,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/umap_d3_arm.svg"), plot = p3,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/legend_arm.svg"), plot = arm_legend,
+       dpi = 300, width = 2, height = 1, device = "svg")
+}
+```
+
+## Day 15
+
+Normalize, reduce dimensions, cluster. I find that Louvain clusters are more in line with the differences I see with SingleR annotations.
+
+```{r, message=FALSE}
+day15 <- norm_and_reduce(day15)
+
+day15_clstr <- FindClusters(day15, verbose = FALSE, resolution = 0.5)
+```
+
+### UMAP
+
+```{r, message=FALSE, fig.width=12, fig.height=10}
+p11 <- DimPlot(day15_clstr, pt.size = 0.4, label = TRUE,
+              label.size = 5) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+p11
+```
+
+### Violin plots
+
+Key markers:
+
+* Lymphoid: IL7R
+* Myeloid: LYZ
+* Epithelial: S100A2
+* Connective tissue: DCN
+* Nervous tissue: DCT
+* Endothelial: FLT1
+* Muscle tissue: COL3A1
+* Keratinocyte: DMKN (epidermis-specific secreted protein)
+
+
+```{r}
+v11 <- VlnPlot(day15_clstr, 
+        ncol = 4,
+        features = c("IL7R", "LYZ", "S100A2", "DCN", "DCT", "FLT1", "COL3A1", "DMKN"))
+v11
+```
+
+Feature and RNA counts, percent mito
+
+```{r}
+v12 <- VlnPlot(day15_clstr, 
+        ncol = 1,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+v12
+```
+
+### Heatmap
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+h11 <- markers_heatmap(day15_clstr) + ggtitle("DAY 15: GEX cluster markers")
+h11 
+```
+
+### Additional plots for QC
+
+UMAPs by PTID and ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=6}
+p12 <- DimPlot(day15_clstr, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p13 <- DimPlot(day15_clstr, pt.size = 0.4, group.by = "ARM",
+              label.size = 5) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p12 + p13
+```
+
+Heatmaps by PTID and ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+Idents(day15_clstr) <- "PTID"
+h12 <- markers_heatmap(day15_clstr) + ggtitle("Day 15: PTID markers")
+h12
+```
+
+QC: Markers by ARM
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+Idents(day15_clstr) <- "ARM"
+h13 <- markers_heatmap(day15_clstr) + ggtitle("Day 15: ARM markers")
+h13
+```
+
+### Conclusions
+
+The clusters make sense, except cluster 15 which is probably dying cells. Remove cluster 15.
+
+```{r}
+d15_filtered <- subset(day15_clstr, subset = seurat_clusters == "15", invert = TRUE)
+
+# Remake UMAPs
+Idents(d15_filtered) <- "seurat_clusters"
+p11 <- DimPlot(d15_filtered, pt.size = 0.4, label = TRUE,
+              label.size = 5) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+p11
+
+p12 <- DimPlot(d15_filtered, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p13 <- DimPlot(d15_filtered, pt.size = 0.4, group.by = "ARM",
+              label.size = 5) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+
+p12 + p13
+```
+
+
+**Save**
+
+```{r}
+# Object
+saveRDS(d15_filtered, file = file.path(script_output_dir, "processed_data/4_d15_filtered.rds"))
+
+# Plots
+if (save_output) {
+    cairo_pdf(file=file.path(script_output_dir, "out/qc_clustering_d15.pdf"), 
+              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+  print(p11)
+  print(v11)
+  print(v12)
+  print(h11)
+  print(p12)
+  print(p13)
+  print(h12)
+  print(h13)
+  dev.off()
+
+  # PNG
+  ggsave(file.path(script_output_dir, "out/umap_d15_seurat.png"), plot = p11,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/umap_d15_ptid.png"), plot = p12,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/umap_d15_arm.png"), plot = p13,
+       dpi = 300, width = 6, height = 6, device = "png")
+
+  # SVG
+  ggsave(file.path(script_output_dir, "out/umap_d15_seurat.svg"), plot = p11,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/umap_d15_ptid.svg"), plot = p12,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/umap_d15_arm.svg"), plot = p13,
+       dpi = 300, width = 6, height = 6, device = "svg")
+}
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+

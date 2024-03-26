@@ -1,0 +1,292 @@
+---
+title: "ADT QC (BCG Challenge 10X)"
+author: "Jolie Phan, modified by Emma Bishop"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries and data (all cells)
+
+```{r, message=FALSE}
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+
+set.seed(4)
+# Save all output, instead of just minimum required objects for the next scripts
+save_output <- TRUE
+
+# Top-level folder where script outputs should be stored
+script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+
+# Singlets by HTO and scDoubleFinder
+day3 <- readRDS(file = file.path(script_output_dir, "processed_data/4_d3_filtered.rds"))  
+day15 <- readRDS(file = file.path(script_output_dir, "processed_data/4_d15_filtered.rds"))
+
+DefaultAssay(day3) <- "ADT"
+DefaultAssay(day15) <- "ADT"
+```
+
+# Normalize and gate
+
+Gate cells by setting a cutoff expression level for each IgG isotype. 
+
+First, normalize ADT data.
+
+```{r, message=FALSE}
+day3 <- NormalizeData(day3, normalization.method = "CLR", margin = 2, assay = "ADT")
+day15 <- NormalizeData(day15, normalization.method = "CLR", margin = 2, assay = "ADT")
+```
+
+Next, assign the markers to their respective IgG isotype control. Pull out expression level data for all samples and find the 99th percentile expression level for the IgG isotype controls.
+
+```{r}
+iso_control <- c("MouseIgG1IsotypeControl", "MouseIgG2aIsotypeControl", "MouseIgG2bIsotypeControl")
+
+igg1 <- c("MouseIgG1IsotypeControl", "CD3", "CD4", "CD8a", "GD", "TRAV1-2", 
+          "CD62L", "CD28", "CD127", "CD95", "CXCR3", 
+          "CXCR5", "CCR4", "CD25", "CD38", "CD161", 
+          "CD103", "CD16", "CD56", "CD11b", "CD169", 
+          "CD19", "CD123", "CD15", "CD163", "CD69")
+
+igg2a <- c("MouseIgG2aIsotypeControl", "CCR7", "CD26", "HLA-DR", "CD14")
+
+igg2b <- c("MouseIgG2bIsotypeControl", "CD45RA", "CCR5", "CCR6", "CD11c", 
+           "PD-L1", "CD20", "CD86")
+
+igg1_xlab <- str_replace(igg1, "MouseIgG1IsotypeControl", "Control")
+igg2a_xlab <- str_replace(igg2a, "MouseIgG2aIsotypeControl", "Control")
+igg2b_xlab <- str_replace(igg2b, "MouseIgG2bIsotypeControl", "Control")
+```
+
+Prep ADT data
+
+```{r}
+make_igg_dfs <- function(obj, igg1, igg2a, igg2b) {
+  igg1_dat <- GetAssayData(obj, layer = "data", assay = "ADT") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Marker") %>%
+    filter(Marker %in% igg1) %>%
+    tidyr::pivot_longer(-Marker, names_to = "Cell", 
+                        values_to = "Expression Level")
+    igg1_dat$Marker <- factor(igg1_dat$Marker, levels = igg1)
+
+  igg2a_dat <- GetAssayData(obj, layer = "data", assay = "ADT") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Marker") %>%
+    filter(Marker %in% igg2a) %>%
+    tidyr::pivot_longer(-Marker, names_to = "Cell", 
+                        values_to = "Expression Level")
+  igg2a_dat$Marker <- factor(igg2a_dat$Marker, levels = igg2a)
+
+  igg2b_dat <- GetAssayData(obj, layer = "data", assay = "ADT") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Marker") %>%
+    filter(Marker %in% igg2b) %>%
+    tidyr::pivot_longer(-Marker, names_to = "Cell", 
+                        values_to = "Expression Level")
+  igg2b_dat$Marker <- factor(igg2b_dat$Marker, levels = igg2b)
+  
+  iso_control_dat <- GetAssayData(obj, layer = "data", assay = "ADT") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Marker") %>%
+    filter(Marker %in% iso_control) %>%
+    tidyr::pivot_longer(-Marker, names_to = "Cell", 
+                        values_to = "Expression Level") %>%
+    tidyr::pivot_wider(id_cols = Cell, names_from = "Marker",
+                       values_from = "Expression Level")
+  
+  return(list(igg1_dat, igg2a_dat, igg2b_dat, iso_control_dat))
+}
+
+d3_list <- make_igg_dfs(day3, igg1, igg2a, igg2b)
+d15_list <- make_igg_dfs(day15, igg1, igg2a, igg2b)
+```
+
+# Visualize expression
+
+```{r, message=FALSE}
+make_plots <- function(df_list, day, igg1_xlab, igg2a_xlab, igg2b_xlab) {
+  # Find the 99th percentile expression level for each isotype control
+  igg1_percent <- quantile(df_list[[4]]$"MouseIgG1IsotypeControl", probs = 0.99)
+  igg2a_percent <- quantile(df_list[[4]]$"MouseIgG2aIsotypeControl", probs = 0.99)
+  igg2b_percent <- quantile(df_list[[4]]$"MouseIgG2bIsotypeControl", probs = 0.99)
+  
+  p1 <- ggplot(df_list[[1]], aes(x = Marker, y = `Expression Level`)) +
+    geom_violin(scale = "width") +
+    ylim(0, 6) +
+    ggtitle(paste0(day, ": Mouse IgG1 Isotype")) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_text(angle = 45, hjust = 1)) +
+    scale_x_discrete(labels = igg1_xlab) +
+    geom_hline(yintercept = igg1_percent, linetype="dashed", color = "red")
+
+  p2 <- ggplot(df_list[[2]], aes(x = Marker, y = `Expression Level`)) +
+    geom_violin(scale = "width") +
+    ylim(0, 6) +
+    ggtitle(paste0(day, ": Mouse IgG2a Isotype")) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_text(angle = 45, hjust = 1)) +
+    scale_x_discrete(labels = igg2a_xlab) +
+    geom_hline(yintercept = igg2a_percent, linetype = "dashed", color = "red")
+  
+  p3 <- ggplot(df_list[[3]], aes(x = Marker, y = `Expression Level`)) +
+    geom_violin(scale = "width") +
+    ylim(0, 6) +
+    ggtitle(paste0(day, ": Mouse IgG2b Isotype")) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_text(angle = 45, hjust = 1)) +
+    scale_x_discrete(labels = igg2b_xlab) +
+    geom_hline(yintercept = igg2b_percent, linetype = "dashed", color = "red")
+  
+  return(list(p1, p2, p3))
+}
+
+d3_plts <- make_plots(d3_list, "Day 3", igg1_xlab, igg2a_xlab, igg2b_xlab)
+d15_plts <- make_plots(d15_list, "Day 15", igg1_xlab, igg2a_xlab, igg2b_xlab)
+```
+
+## Day 3
+
+```{r, fig.width=12, fig.height=10, message=FALSE}
+d3_plts[[1]] / (d3_plts[[2]] | d3_plts[[3]])
+```
+
+## Day 15
+
+```{r, fig.width=12, fig.height=10, message=FALSE}
+d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]])
+```
+
+Save plots
+
+```{r}
+if (save_output) {
+  cairo_pdf(file=file.path(script_output_dir, "out/qc_adt_vlnplots.pdf"), width=8, height=5,
+        onefile = TRUE, bg = "transparent", family = "Arial") 
+  print(d3_plts[[1]] / (d3_plts[[2]] | d3_plts[[3]]))
+  print(d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]]))
+  dev.off()
+}
+```
+
+# Background subtract
+
+And set all negative expression values to 0.
+
+```{r}
+background_subtract <- function(df_list) {
+  igg1_percent <- quantile(df_list[[4]]$"MouseIgG1IsotypeControl", probs = 0.99)
+  igg2a_percent <- quantile(df_list[[4]]$"MouseIgG2aIsotypeControl", probs = 0.99)
+  igg2b_percent <- quantile(df_list[[4]]$"MouseIgG2bIsotypeControl", probs = 0.99)
+  
+  igg1_dat <- df_list[[1]] %>%
+    mutate(bc_expression = `Expression Level` - igg1_percent) %>%
+    tidyr::pivot_wider(id_cols = Marker, names_from = Cell, 
+                       values_from = bc_expression) %>%
+    tibble::column_to_rownames("Marker") 
+  igg1_dat[igg1_dat < 0] <- 0
+  
+  igg2a_dat <- df_list[[2]] %>%
+    mutate(bc_expression = `Expression Level` - igg2a_percent) %>%
+    tidyr::pivot_wider(id_cols = Marker, names_from = Cell, 
+                       values_from = bc_expression) %>%
+    tibble::column_to_rownames("Marker") 
+  igg2a_dat[igg2a_dat < 0] <- 0
+  
+  igg2b_dat <- df_list[[3]] %>%
+    mutate(bc_expression = `Expression Level` - igg2b_percent) %>%
+    tidyr::pivot_wider(id_cols = Marker, names_from = Cell, 
+                       values_from = bc_expression) %>%
+    tibble::column_to_rownames("Marker") 
+  igg2b_dat[igg2b_dat < 0] <- 0
+  
+  bc_adt_dat <- igg1_dat %>%
+    bind_rows(igg2a_dat) %>%
+    bind_rows(igg2b_dat) %>%
+    as.matrix()
+  
+  return(bc_adt_dat)
+}
+
+d3_bc_adt <- background_subtract(d3_list)
+d15_bc_adt <- background_subtract(d15_list)
+```
+
+Create a new ADT assay for the background-corrected expression levels.
+
+```{r}
+# Day 3
+d3_adt_assay <- GetAssay(day3, assay = "ADT")
+Key(object = d3_adt_assay) <- "adtbc_"
+day3[["ADT_bc"]] <- d3_adt_assay
+day3[["ADT_bc"]] <- SetAssayData(day3[["ADT_bc"]], layer = "data", new.data = d3_bc_adt)
+
+# Day 15
+d15_adt_assay <- GetAssay(day15, assay = "ADT")
+Key(object = d15_adt_assay) <- "adtbc_"
+day15[["ADT_bc"]] <- d15_adt_assay
+day15[["ADT_bc"]] <- SetAssayData(day15[["ADT_bc"]], layer = "data", new.data = d15_bc_adt)
+
+
+if (save_output) {
+  saveRDS(day3, file = file.path(script_output_dir, 
+                                      "processed_data/5_singlets_with_adt_d3.rds"))
+  saveRDS(day15, file = file.path(script_output_dir, 
+                                      "processed_data/5_singlets_with_adt_d15.rds"))
+}
+```
+
+# Visualize expression of 'working' ADTs
+
+## Day 3
+
+ADTs with expression level above isotype control:
+
+* HLA-DR
+
+```{r}
+VlnPlot(day3, features = "HLA-DR")
+```
+
+```{r}
+FeaturePlot(day3, features = "HLA-DR")
+```
+
+## Day 15
+
+ADTs with expression level above isotype control:
+
+* GD
+* CD95
+* CD25
+* CD15
+* CD26
+* HLA-DR
+* PD-L1
+* CD20
+
+```{r}
+VlnPlot(day3, ncol = 4, pt.size = 0.01,
+        features = c("HLA-DR", "GD", "CD95", "CD25", "CD15", "CD26", "PD-L1", "CD20"))
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+

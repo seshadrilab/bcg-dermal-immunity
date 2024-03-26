@@ -1,0 +1,529 @@
+---
+title: "Demultiplexing (BCG Challenge 10X)"
+author: "Jolie Phan, modified by Emma Bishop"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Notes
+
+At first I used HTODemux for Day 3 and MULTIseqDemux for Day 15 because the ridge plots had better separation at Day 3 that way. However, we get 1664 more singlest with MULTIseqDemux at Day 3 and the hashtag assignment is almost entirely in agreement between the two tools. So I've decided to use MULTIseqDemux for both timepoint for consistency.
+
+# Load libraries and data
+
+```{r, message=FALSE, warning=FALSE}
+library(Seurat)
+library(tidyverse)
+library(knitr)
+library(cowplot)
+library(ggplot2)
+
+set.seed(4)
+
+# Save all output, instead of just minimum required objects for the next scripts
+save_output <- TRUE
+script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+
+# Create folders for data
+if(!dir.exists(file.path(script_output_dir))) {
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "processed_data")))
+  dir.create(file.path(script_output_dir, "processed_data"), recursive = T)
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "out")))
+  dir.create(file.path(script_output_dir, "out"), recursive = T)
+}
+```
+
+Load data into Seurat objects
+
+```{r, message=FALSE}
+# Linux
+day3_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/20230323_Day3_aggr/outs/count/filtered_feature_bc_matrix.h5"
+day15_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/20230207_Day15/per_sample_outs/20230203_Seshadri_UW/count/sample_filtered_feature_bc_matrix.h5"
+```
+
+Make objects
+
+```{r, message=FALSE}
+make_seurat_obj <- function(infile, projectname) {
+  dat <- Read10X_h5(infile)
+  
+  # Remove ".1" from gene names
+  rownames(dat$`Antibody Capture`) <- rownames(dat$`Antibody Capture`) %>%
+    str_replace(., fixed(".1"), "")
+  
+  # Extract matrices of ADT and HTO info 
+  ADT <- !grepl("Hashtag", dat$`Antibody Capture`@Dimnames[[1]])
+  ADT_counts <- dat$`Antibody Capture`[ADT,]
+  HTO <- grepl("Hashtag", dat$`Antibody Capture`@Dimnames[[1]])
+  HTO_counts <- dat$`Antibody Capture`[HTO,]
+  
+  # Make object
+  obj <- CreateSeuratObject(counts = dat$`Gene Expression`, project = projectname, min.cells = 3)
+  obj[["ADT"]] <-  CreateAssayObject(counts = ADT_counts)
+  obj[["HTO"]] <-  CreateAssayObject(counts = HTO_counts)
+  Assays(obj)
+  
+  return(obj)
+}
+
+day3 <- make_seurat_obj(day3_f, "Day3")
+day15 <- make_seurat_obj(day15_f, "Day15")
+
+# Starting counts
+d3_start_count <- length(day3$orig.ident)
+d15_start_count <- length(day15$orig.ident)
+```
+
+Raw HTO counts for each day
+
+```{r}
+rowSums(day3$HTO) %>%
+  as.data.frame() %>%
+  kable(align = "l", caption = "Day 3")
+
+rowSums(day15$HTO) %>%
+  as.data.frame() %>%
+  kable(align = "l", caption = "Day 15")
+```
+
+Normalize data
+
+```{r}
+day3_norm <- NormalizeData(day3, assay = "HTO", normalization.method = "CLR", margin = 2)
+day15_norm <- NormalizeData(day15, assay = "HTO", normalization.method = "CLR", margin = 2)
+```
+
+HTO distributions for each day
+
+```{r}
+hto_distr <- function(inobj) {
+  HTO_counts <- inobj$HTO@data
+  to_plot <- HTO_counts %>%
+    as.data.frame() %>%
+    rownames_to_column("hashtag") %>%
+    pivot_longer(!hashtag) %>%
+    select(-c(name))
+  
+  h <- ggplot(to_plot, aes(value)) +
+    geom_histogram() +
+    theme_classic() +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank()) +
+    facet_wrap(~hashtag, scales = "free")
+  
+  return(h)
+}
+```
+
+**Day 3**
+
+```{r}
+d3_hto <- hto_distr(day3_norm)
+d3_hto + ggtitle("Day 3")
+```
+
+**Day 15**
+
+```{r}
+d15_hto <- hto_distr(day15_norm)
+d15_hto + ggtitle("Day 15")
+```
+
+# Demultiplex
+
+```{r, message=FALSE}
+demux_multiseq <- function(norm_obj) {
+  # Demultiplex with MULTIseqDemux 
+  dm <- MULTIseqDemux(norm_obj, assay = "HTO", autoThresh = TRUE)
+  i1 <- grepl("Hashtag", dm@meta.data$MULTI_ID)
+  i2 <- grepl("Doublet", dm@meta.data$MULTI_ID)
+  i3 <- grepl("Negative", dm@meta.data$MULTI_ID)
+  # Get overall Singlet, Doublet, Negative classification
+  dm@meta.data$MULTI_ID_global <- NULL
+  dm@meta.data$MULTI_ID_global[i1] <- "Singlet"
+  dm@meta.data$MULTI_ID_global[i2] <- "Doublet"
+  dm@meta.data$MULTI_ID_global[i3] <- "Negative"
+  dm@meta.data$MULTI_ID_global <- factor(dm@meta.data$MULTI_ID_global, 
+                                         levels = c("Doublet", 
+                                                    "Negative", 
+                                                    "Singlet"))
+  return(dm)
+}
+
+
+day3_dm <- demux_multiseq(day3_norm)
+day3_dm@meta.data$MULTI_ID <- factor(day3_dm@meta.data$MULTI_ID,
+                                levels = c("Hashtag1", "Hashtag2", "Hashtag3", 
+                                           "Hashtag4", "Hashtag5", "Hashtag6", 
+                                           "Hashtag7", "Hashtag8", "Hashtag9", 
+                                           "Hashtag10", "Doublet", "Negative"))
+
+day15_dm <- demux_multiseq(day15_norm)
+day15_dm@meta.data$MULTI_ID <- factor(day15_dm@meta.data$MULTI_ID,
+                                levels = c("Hashtag1", "Hashtag3", 
+                                           "Hashtag4", "Hashtag5", "Hashtag6", 
+                                           "Hashtag7", "Hashtag9", 
+                                           "Hashtag10", "Doublet", "Negative")) 
+```
+
+**Day 3**
+
+Missing hashtags:
+
+* Hashtag 7 (ptid 12) - why?
+
+```{r}
+table(day3_dm$MULTI_ID_global)
+table(day3_dm$MULTI_ID)
+```
+
+Ridge plot using MULTI_ID
+
+```{r, fig.height=12, fig.width=8, message=FALSE}
+Idents(day3_dm) <- "MULTI_ID"
+RidgePlot(day3_dm, assay = "HTO", ncol = 3,
+          features = c("Hashtag1", "Hashtag2", "Hashtag3", "Hashtag4", "Hashtag5",
+                       "Hashtag6", "Hashtag8", "Hashtag9", "Hashtag10"))
+```
+
+**Day 15**
+
+Missing hashtags:
+
+* Hashtag 2 (ptid 5) - Expected
+* Hashtag 3 (ptid 7) - why?
+* Hashtag 4 (ptid 8) - why?
+* Hashtag 8 (ptid 12) - Expected
+
+```{r}
+table(day15_dm$MULTI_ID_global)
+table(day15_dm$MULTI_ID)
+```
+
+Ridge plot using MULTI_ID
+
+```{r, fig.height=12, fig.width=8, message=FALSE}
+Idents(day15_dm) <- "MULTI_ID"
+RidgePlot(day15_dm, assay = "HTO", ncol = 3,
+          features = c("Hashtag1", "Hashtag3", "Hashtag4", "Hashtag5",
+                       "Hashtag6", "Hashtag7", "Hashtag9", "Hashtag10"))
+```
+
+# Label by HTO
+
+```{r}
+label <- function(dm) {
+  i1 <- grepl("^Hashtag1$", dm@meta.data$MULTI_ID)
+  i2 <- grepl("Hashtag2$", dm@meta.data$MULTI_ID)
+  i3 <- grepl("^Hashtag3$", dm@meta.data$MULTI_ID)
+  i4 <- grepl("^Hashtag4$", dm@meta.data$MULTI_ID)
+  i5 <- grepl("^Hashtag5$", dm@meta.data$MULTI_ID)
+  i6 <- grepl("^Hashtag6$", dm@meta.data$MULTI_ID)
+  i7 <- grepl("^Hashtag7$", dm@meta.data$MULTI_ID)
+  i8 <- grepl("^Hashtag8$", dm@meta.data$MULTI_ID)
+  i9 <- grepl("^Hashtag9$", dm@meta.data$MULTI_ID)
+  i10 <- grepl("^Hashtag10$", dm@meta.data$MULTI_ID)
+  i11 <- grepl("Doublet", dm@meta.data$MULTI_ID)
+  i12 <- grepl("Negative", dm@meta.data$MULTI_ID)
+
+  # PTID number
+  dm@meta.data$PTID <- NULL
+  dm@meta.data$PTID[i1] <- "1"
+  dm@meta.data$PTID[i2] <- "5"
+  dm@meta.data$PTID[i3] <- "7"
+  dm@meta.data$PTID[i4] <- "8"
+  dm@meta.data$PTID[i5] <- "9"
+  dm@meta.data$PTID[i6] <- "10"
+  dm@meta.data$PTID[i7] <- "11"
+  dm@meta.data$PTID[i8] <- "12"
+  dm@meta.data$PTID[i9] <- "13"
+  dm@meta.data$PTID[i10] <- "16"
+  dm@meta.data$PTID[i11] <- "Doublet"
+  dm@meta.data$PTID[i12] <- "Negative"
+  dm@meta.data$PTID <- factor(dm@meta.data$PTID, 
+                              levels = c("1", "5", "7", "8", "9", "10", "11",
+                                         "12", "13", "16", "Doublet", "Negative"))
+  # PTID sex
+  dm@meta.data$SEX <- NULL
+  dm@meta.data$SEX[i1] <- "M"
+  dm@meta.data$SEX[i2] <- "F"
+  dm@meta.data$SEX[i3] <- "I"
+  dm@meta.data$SEX[i4] <- "M"
+  dm@meta.data$SEX[i5] <- "F"
+  dm@meta.data$SEX[i6] <- "M"
+  dm@meta.data$SEX[i7] <- "M"
+  dm@meta.data$SEX[i8] <- "M"
+  dm@meta.data$SEX[i9] <- "M"
+  dm@meta.data$SEX[i10] <- "F"
+  dm@meta.data$SEX[i11] <- "Doublet"
+  dm@meta.data$SEX[i12] <- "Negative"
+
+  # PTID age
+  dm@meta.data$AGE <- NULL
+  dm@meta.data$AGE[i1] <- 29
+  dm@meta.data$AGE[i2] <- 40
+  dm@meta.data$AGE[i3] <- 40
+  dm@meta.data$AGE[i4] <- 41
+  dm@meta.data$AGE[i5] <- 36
+  dm@meta.data$AGE[i6] <- 28
+  dm@meta.data$AGE[i7] <- 36
+  dm@meta.data$AGE[i8] <- 43
+  dm@meta.data$AGE[i9] <- 28
+  dm@meta.data$AGE[i10] <- 20
+  dm@meta.data$AGE[i11] <- 0
+  dm@meta.data$AGE[i12] <- 0
+
+  # Arm metadata
+  dm@meta.data$ARM <- NULL
+  dm@meta.data$ARM[i1] <- "Non-INH"
+  dm@meta.data$ARM[i2] <- "Non-INH"
+  dm@meta.data$ARM[i3] <- "Non-INH"
+  dm@meta.data$ARM[i4] <- "Non-INH"
+  dm@meta.data$ARM[i5] <- "INH"
+  dm@meta.data$ARM[i6] <- "INH"
+  dm@meta.data$ARM[i7] <- "INH"
+  dm@meta.data$ARM[i8] <- "Non-INH"
+  dm@meta.data$ARM[i9] <- "INH"
+  dm@meta.data$ARM[i10] <- "INH"
+  dm@meta.data$ARM[i11] <- "Doublet"
+  dm@meta.data$ARM[i12] <- "Negative"
+  dm@meta.data$ARM <- factor(dm@meta.data$ARM, levels = c("Non-INH", "INH"))
+  
+  return(dm)
+}
+
+day3_labelled <- label(day3_dm)
+day15_labelled <- label(day15_dm)
+
+if(save_output) {
+  saveRDS(day3_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d3.rds"))
+  saveRDS(day15_labelled, file = file.path(script_output_dir, "processed_data/1_dm_all_d15.rds"))
+}
+```
+
+# QC
+
+## ncount RNA (singlets, doublets, negative)
+
+```{r, message=FALSE, fig.width=10, fig.height=5}
+Idents(day3_labelled) <- "MULTI_ID_global"
+v1 <- VlnPlot(day3_labelled, features = "nCount_RNA", pt.size = 0.1, log = TRUE) +
+  ylim(0, 40000) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 3 nCount_RNA") +
+  NoLegend()
+
+Idents(day15_labelled) <- "MULTI_ID_global"
+v2 <- VlnPlot(day15_labelled, features = "nCount_RNA", pt.size = 0.1, log = TRUE) +
+  ylim(0, 40000) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 15 nCount_RNA") +
+  NoLegend()
+
+cowplot::plot_grid(v1, v2)
+```
+
+## ncount HTO (singlets, doublets, negative)
+
+```{r, message=FALSE, fig.width=10, fig.height=5}
+v3 <- VlnPlot(day3_labelled, features = "nCount_HTO", pt.size = 0.1, log = TRUE) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 3 nCount_HTO") +
+  NoLegend()
+
+v4 <- VlnPlot(day15_labelled, features = "nCount_HTO", pt.size = 0.1, log = TRUE) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 15 nCount_HTO") +
+  NoLegend()
+
+cowplot::plot_grid(v3, v4)
+```
+
+## ncount ADT (singlets, doublets, negative)
+
+```{r, message=FALSE, fig.width=10, fig.height=5}
+v5 <- VlnPlot(day3_labelled, features = "nCount_ADT", pt.size = 0.1, log = TRUE) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 3 nCount_ADT") +
+  NoLegend()
+
+v6 <- VlnPlot(day15_labelled, features = "nCount_ADT", pt.size = 0.1, log = TRUE) +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Day 15 nCount_ADT") +
+  NoLegend()
+
+cowplot::plot_grid(v5, v6)
+```
+
+## Total Cells per PTID and arm
+
+Get singlets
+
+```{r}
+Idents(day3_labelled) <- "MULTI_ID_global"
+Idents(day15_labelled) <- "MULTI_ID_global"
+d3_singlet <- subset(day3_labelled, idents = "Singlet")
+d15_singlet <- subset(day15_labelled, idents = "Singlet")
+
+# Get singlet by HTO counts
+d3_hto_singlet_count <- length(d3_singlet$orig.ident)
+d15_hto_singlet_count <- length(d15_singlet$orig.ident)
+
+# Start QC barplot dataframe
+d3_qc_counts <- data.frame(d3_start_count, d3_hto_singlet_count)
+d15_qc_counts <- data.frame(d15_start_count, d15_hto_singlet_count)
+
+# These are necessary for the next script
+saveRDS(d3_qc_counts, file = file.path(script_output_dir, "processed_data/2_d3_qc_df.rds"))
+saveRDS(d15_qc_counts, file = file.path(script_output_dir, "processed_data/2_d15_qc_df.rds"))
+saveRDS(d3_singlet, file = file.path(script_output_dir, "processed_data/2_dm_singlets_d3.rds"))
+saveRDS(d15_singlet, file = file.path(script_output_dir, "processed_data/2_dm_singlets_d15.rds"))
+```
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+df_day3 <- table(d3_singlet$orig.ident, d3_singlet$PTID) %>%
+  as.data.frame()
+
+df_out <- table(d15_singlet$orig.ident, d15_singlet$PTID) %>%
+  as.data.frame() %>%
+  bind_rows(df_day3) %>%
+  filter(Var2 != "Doublet" & Var2 != "Negative") %>%
+  dplyr::rename("PTID" = "Var2") %>%
+  dplyr::rename("Timepoint" = "Var1") %>%
+  dplyr::rename("# Cells" = "Freq") %>%
+  mutate(Timepoint = as.factor(Timepoint))
+df_out$Timepoint <- factor(df_out$Timepoint, levels = c("Day3", "Day15"))
+
+# Barplot
+ggplot(df_out, aes(x = PTID, y = `# Cells`, fill = Timepoint)) +
+  geom_bar(position = "dodge", stat = "identity", width = 0.7, color="black") +
+  theme_bw() +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  ggtitle("Number of Singlet Cells per PTID")
+```
+
+Number of Non-INH vs INH ptids and cells at each day
+
+```{r, message=FALSE, fig.width=12, fig.height=8}
+dfout2 <- df_out %>%
+  mutate(Arm = case_when(
+    PTID %in% c("1", "5", "7", "8", "12") ~ "Non-INH",
+    .default = "INH"
+  )) %>%
+  group_by(Timepoint, Arm) %>%
+  mutate(`Total Cells` = sum(`# Cells`)) %>%
+  mutate(`# PTIDs with > 20 cells` = case_when(
+    Timepoint == "Day15" & Arm == "Non-INH" ~ "n = 1",
+    Timepoint == "Day15" & Arm == "INH" ~ "n = 5",
+    Timepoint == "Day3" & Arm == "Non-INH" ~ "n = 5",
+    .default = "n = 4"
+  )) %>%
+  ungroup()
+
+ggplot(dfout2, aes(x = Timepoint, y = `Total Cells`, fill = Arm)) +
+  geom_bar(position = "dodge", stat = "identity", width = 0.7) +
+  theme_bw() +
+  theme(text = element_text(size = 16),
+        axis.text = element_text(size = 16)) +
+  scale_fill_manual(values = c("orange", "blue4")) +
+  geom_text(aes(label=`# PTIDs with > 20 cells`), 
+            position=position_dodge(width = 0.7), 
+            vjust=-0.25) +
+  ggtitle("Total Singlets per Arm (n is # PTIDs with > 20 cells)")
+```
+
+```{r}
+dfout2 %>%
+  group_by(Timepoint, Arm, `# Cells`, PTID) %>%
+  tally() %>%
+  select(-c(n)) %>%
+  kable(align = "l", caption = "Singlets per Timepoint, Arm, PTID")
+
+dfout2 %>%
+  group_by(Timepoint, Arm, `Total Cells`, `# PTIDs with > 20 cells`) %>%
+  tally() %>%
+  select(-c(n)) %>%
+  kable(align = "l", caption = "Singlets per Timepoint, Arm")
+```
+
+## tSNE plots
+
+Get Singlets and Doublets
+
+```{r}
+day3_subset <- subset(day3_labelled, idents = "Negative", invert = TRUE)
+day15_subset <- subset(day15_labelled, idents = "Negative", invert = TRUE)
+```
+
+tSNE embedding of the HTO data
+
+```{r, message=FALSE, warning=FALSE}
+tsne_hto <- function(dm_subset) {
+  DefaultAssay(dm_subset) <- "HTO"
+  dm_subset <- ScaleData(dm_subset, features = rownames(dm_subset),
+                                   verbose = FALSE)
+  dm_subset <- RunPCA(dm_subset, features = rownames(dm_subset), approx = FALSE)
+  dm_subset <- RunTSNE(dm_subset, dims = 1:8, perplexity = 100)
+  DimPlot(dm_subset)
+  
+  return(dm_subset)
+}
+
+day3_tsne <- tsne_hto(day3_subset)
+day15_tsne <- tsne_hto(day15_subset)
+```
+
+### Doublets vs Singlets
+
+```{r, fig.width=10, fig.height=5}
+p1 <- DimPlot(day3_tsne) + ggtitle("Day 3")
+p2 <- DimPlot(day15_tsne) + ggtitle("Day 15")
+
+p1 + p2
+```
+
+### Singlets by PTID
+
+```{r, fig.width=10, fig.height=5}
+ptid_colors <- c("1" = "salmon", "5" = "orange", "7" = "#7570B3",
+                 "8" = "#0CB702", "9" = "#A6761D", "10" = "#00BFC4",
+                 "11" = "#C77CFF", "12" = "#FF61CC", "13" = "darkgreen",
+                 "16" = "darkblue")
+
+# Get tSNE singlets
+d3_tsne_singlet <- subset(day3_tsne, idents = "Singlet")
+d15_tsne_singlet <- subset(day15_tsne, idents = "Singlet")
+
+Idents(d3_tsne_singlet) <- "PTID"
+Idents(d15_tsne_singlet) <- "PTID"
+
+p3 <- DimPlot(d3_tsne_singlet, cols = ptid_colors) + ggtitle("Day 3")
+p4 <- DimPlot(d15_tsne_singlet, cols = ptid_colors) + ggtitle("Day 15")
+
+p3 + p4
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+

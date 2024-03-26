@@ -1,0 +1,693 @@
+---
+title: "GEX Analysis (BCG Challenge 10X)"
+author: "Emma Bishop"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intro
+
+The goal is to tie this data together with findings from some of the other datasets:
+
+* Blood bulk rna-seq
+* Skin CyTOF
+
+# Load libraries and data
+
+```{r, message=FALSE, warning=FALSE}
+library(Seurat)
+library(tidyverse)
+library(CellChat)
+library(svglite)
+library(ggpubr)
+library(cowplot)
+
+set.seed(4)
+
+# Top-level folder where script outputs should be stored
+script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+```
+
+```{r}
+day3_annot <- readRDS(file = file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
+day15_annot <- readRDS(file = file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
+```
+
+# Collapse annotations to match CyTOF groups
+
+Define new annotations to match CyTOF cell types as best we can. I don't feel like I can confidently label "cytotoxic" T cells.
+
+```{r}
+# Make CyTOF-related annotations that include non-immune cells
+
+# For now don't worry about cytotoxic T cells (how would I define those?)
+tcells <- c("CD8 TEM", "CD4 TEM", "dnT", "Treg", "CD8 Naive", "gdT",
+            "CD4 Proliferating", "CD8 Proliferating")
+mait <- c("MAIT")
+tcm <- c("CD4 TCM", "CD8 TCM")
+bcell <- c("B intermediate", "B memory", "B cells")
+gran <- c("Mast cells")
+mono <- c("CD14 Mono", "CD16 Mono")
+
+# Day3
+day3_annot@meta.data <- day3_annot@meta.data %>%
+  mutate(cytof_annot = case_when(
+    consolidated %in% tcells ~ "T cells", 
+    consolidated %in% mait ~ "MAIT cells",
+    consolidated %in% tcm ~ "Tcm",
+    consolidated %in% bcell ~ "B cells",
+    consolidated %in% gran ~ "Granulocytes",
+    consolidated %in% mono ~ "Monocytes", 
+    .default = eb_atlas_idents
+  )) %>%
+  mutate(cytof_annot = case_when(
+    cytof_annot == "Lymphoid" ~ "Lymphoid other",
+    cytof_annot == "Myeloid" ~ "Myeloid other",
+    .default = cytof_annot
+  ))
+
+# Day15
+day15_annot@meta.data <- day15_annot@meta.data %>%
+  mutate(cytof_annot = case_when(
+    consolidated %in% tcells ~ "T cells", 
+    consolidated %in% mait ~ "MAIT cells",
+    consolidated %in% tcm ~ "Tcm",
+    consolidated %in% bcell ~ "B cells",
+    consolidated %in% gran ~ "Granulocytes",
+    consolidated %in% mono ~ "Monocytes", 
+    .default = eb_atlas_idents
+  )) %>%
+  mutate(cytof_annot = case_when(
+    cytof_annot == "Lymphoid" ~ "Lymphoid other",
+    cytof_annot == "Myeloid" ~ "Myeloid other",
+    .default = cytof_annot
+  ))
+```
+
+Define colors
+
+```{r}
+clstr_colors_imm <- c("Lymphoid other" = "#00A9FF", "T cells"= "#00BFC4", "MAIT cells" = "cyan",
+                  "Tcm" = "#8ab8fe", "B cells" = "navy", "Keratinocytes" = "#FF61CC", 
+                  "Epithelial" = "#0CB702", "Endothelial" = "#E68613", 
+                  "Muscle tissue" = "#C77CFF", "Connective tissue" = "#00BE67", 
+                  "Nervous tissue" = "#A52A2A", "Unknown" = "gray", 
+                  "Myeloid other" = "#F8766D", "Monocytes" = "#cb416b",
+                  "Granulocytes" = "#f8481c")
+```
+
+Sanity check that these collapsed groupings make sense
+
+```{r}
+Idents(day3_annot) <- "cytof_annot"
+DimPlot(day3_annot, cols = clstr_colors_imm)
+
+Idents(day15_annot) <- "cytof_annot"
+DimPlot(day15_annot, cols = clstr_colors_imm)
+```
+
+
+# Cell composition
+
+In the CyTOF data we see changes in cell populations between days 3 and 15. We want to check if a similar pattern shows up in the single-cell data. Cell populations of interest (significantly different by unadj p-value):
+
+* T cells (excluding MAIT, cytotoxic, CD11c+, Tcm): Down at D15
+* Macrophages: Up at D15
+* Granulocytes: Up at D15
+* Monocytes: Down at D15
+
+Make dataframes
+
+```{r}
+make_boxplot_df <- function(meta_df, major_pop, subpop_vec) {
+  df1 <- meta_df %>%
+    group_by(orig.ident, PTID) %>%
+    filter(eb_atlas_idents == major_pop) %>%
+    tally() %>%
+    dplyr::rename(major_tot = n)
+
+  # Total subtypes of interest per PTID
+  df2 <- meta_df %>%
+    group_by(orig.ident, PTID, cytof_annot) %>%
+    filter(eb_atlas_idents == major_pop) %>%
+    tally() %>%
+    left_join(df1, by = c("orig.ident", "PTID")) %>%
+    mutate(Frequency = n / major_tot * 100) %>%
+    # Will only plot the analogous sub-populations
+    filter(cytof_annot %in% subpop_vec) %>%
+    mutate(cytof_annot = factor(cytof_annot, levels = subpop_vec))
+
+  return(df2)
+}
+
+combined <- bind_rows(day3_annot@meta.data, day15_annot@meta.data)
+
+lymph_df <- make_boxplot_df(combined, "Lymphoid", c("T cells", "MAIT cells", "Tcm", "B cells"))
+myel_df <- make_boxplot_df(combined, "Myeloid", c("Monocytes", "Granulocytes"))
+
+# Add 0's for granulocytes (not seen at day 3)
+d3_gran <- data.frame(orig.ident = rep(c("Day3"), 9),
+                      PTID = c("1", "5", "7", "8", "9", "10", "12", "13", "16"),
+                      cytof_annot = c("Granulocytes"),
+                      n = rep(c(0), 9),
+                      major_tot = rep(c(NA), 9),
+                      Frequency = rep(c(0), 9))
+d3_gran
+
+myel_df <- bind_rows(myel_df, d3_gran) %>%
+  mutate(orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
+```
+
+Make plots
+
+```{r}
+make_boxplot <- function(in_df, current_cluster) {
+  in_df <- in_df %>%
+    filter(cytof_annot == current_cluster)
+  
+  test <- wilcox.test(formula("Frequency ~ orig.ident"), data = in_df, paired = FALSE)
+  test_df <- data.frame(p = as.numeric(unlist(test)["p.value"])) %>%
+      mutate(p_val_text = if_else(p < 0.001, "p<0.001", paste0("p=", formatC(round(p, 3), format='f', digits=3))))
+  
+  box <- ggplot(in_df, aes(x = orig.ident, y = Frequency, group = orig.ident)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(size = 2, shape = 21, width = 0.1, aes(fill = orig.ident)) +
+    scale_fill_manual(values =  c("Day3" = "white", "Day15" = "gray50")) +
+    theme_classic() +
+    theme(text = element_text(family="Arial"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(color="black", size = 9),
+          axis.text.x = element_text(color="black", size = 9),
+          plot.title = element_text(hjust = 0.5, size = 9),
+          panel.grid.major.x = element_blank(),
+          strip.background = element_blank(),
+          legend.position = "none",
+          plot.margin = margin(0.3, 0.2, 0.1, 0.2, "cm")) +
+    labs(title = current_cluster)
+
+  plot_ylims <- ggplot_build(box)$layout$panel_params[[1]]$y.range
+  box <- box + 
+    annotate("text", x = 1.5, y = plot_ylims[2] + 0.2*diff(plot_ylims),
+             label = test_df$p_val_text, size = 3) +
+    coord_cartesian(ylim = c(plot_ylims[[1]], plot_ylims[[2]] + 0.35*diff(plot_ylims)))
+  
+  return(box)
+}
+```
+
+Lymphoid
+
+```{r}
+lymph_subpop <- c("T cells", "MAIT cells", "Tcm", "B cells")
+
+lymph_plots <- purrr::pmap(.l = list(lymph_subpop),
+                           .f = function(n) {
+                           make_boxplot(lymph_df, current_cluster = n)
+                         })
+
+names(lymph_plots) <- lymph_subpop
+lymphgrid <- ggarrange(plotlist = lymph_plots, nrow = 2, ncol = 2)
+lymphgrid <- annotate_figure(lymphgrid, left = text_grob("Proportion Lymphoid (%)", rot = 90, size = 9))
+lymphgrid
+```
+
+Myeloid
+
+```{r}
+myel_subpop <- c("Monocytes", "Granulocytes")
+
+myel_plots <- purrr::pmap(.l = list(myel_subpop),
+                           .f = function(n) {
+                           make_boxplot(myel_df, current_cluster = n)
+                         })
+
+names(myel_plots) <- myel_subpop
+myelgrid <- ggarrange(plotlist = myel_plots, nrow = 1, ncol = 2)
+myelgrid <- annotate_figure(myelgrid, left = text_grob("Proportion Myeloid (%)", rot = 90, size = 9))
+myelgrid
+```
+
+
+```{r}
+composition_grid <- plot_grid(lymphgrid, myelgrid, ncol = 1, rel_heights = c(2, 1))
+composition_grid
+
+ggsave(file.path(script_output_dir, "out/Fig5_boxplots.png"), plot = composition_grid,
+       dpi = 300, width = 3, height = 4.5, device = "png")
+
+cairo_pdf(file = file.path(script_output_dir, "out/Fig5_boxplots.pdf"), 
+          width = 3, height = 4.5, bg = "transparent", family = "Arial")
+print(composition_grid)
+dev.off()
+```
+
+
+# CellChat: Immune-level annotations
+
+## Prepare data
+
+Log normalize and choose database.
+
+```{r}
+DefaultAssay(day3_annot) <- "RNA"
+DefaultAssay(day15_annot) <- "RNA"
+
+# Log-normalize
+day3_annot <- NormalizeData(day3_annot)
+day15_annot <- NormalizeData(day15_annot)
+
+# Create CellChat object
+day3_cellchat_imm <- createCellChat(day3_annot, group.by = "cytof_annot")
+day15_cellchat_imm <- createCellChat(day15_annot, group.by = "cytof_annot")
+
+# Set the interaction database and add to the object
+day3_cellchat_imm@DB <- CellChatDB.human
+day15_cellchat_imm@DB <- CellChatDB.human
+```
+
+Subset GEX data to just genes in the signalling pathways database (to save time).
+
+```{r}
+# Subset the expression data of signaling genes for saving computation cost.
+# This step is necessary even if using the whole database
+day3_cellchat_sub_imm <- subsetData(day3_cellchat_imm)
+day15_cellchat_sub_imm <- subsetData(day15_cellchat_imm)
+```
+
+Identify over-expressed signaling genes associated with each cell group.
+
+Default settings being used by `identifyOverExpressedGenes`:
+- Only returns positive markers (only.pos=TRUE)
+- LogFC threshold is 0 (thresh.fc = 0)
+- p-value threshold is 0.05 (thresh.p = 0.05)
+- Only use genes if they're expressed in at least 10 cells total in the dataset
+- Need at least 10 'expressed' cells in the whole dataset for the genes to be considered for cell-cell communication analysis (min.cells = 10)
+
+
+```{r}
+# Parallelize
+future::plan("multisession", workers = 12)
+
+day3_cellchat_sub_imm <- identifyOverExpressedGenes(day3_cellchat_sub_imm)
+day15_cellchat_sub_imm <- identifyOverExpressedGenes(day15_cellchat_sub_imm)
+
+# TODO: Try projecting GEX data onto protein-protein interaction network and see if interactions look different
+```
+
+Identify over-expressed ligand-receptor interactions (pairs) within the used CellChatDB
+
+Default settings being used by `identifyOverExpressedInteractions`:
+- Require that both ligand and receptor from one pair are over-expressed (variable.both = TRUE)
+
+```{r}
+day3_cellchat_sub_imm <- identifyOverExpressedInteractions(day3_cellchat_sub_imm)
+day15_cellchat_sub_imm <- identifyOverExpressedInteractions(day15_cellchat_sub_imm)
+```
+
+
+## Infer cell-cell communication network (takes a while)
+
+Compute the communication probability/strength between any interacting cell groups
+
+Non-default settings being used by `computeCommunProb`:
+- Consider the proportion of cells in each group across all sequenced cells.
+They advise in the docs "Set population.size = TRUE if analyzing unsorted single-cell transcriptomes, with the reason that abundant cell populations tend to send collectively stronger signals than the rare cell populations."
+
+```{r}
+# Day 3
+day3_cellchat_sub_imm <- computeCommunProb(day3_cellchat_sub_imm, type = "triMean", 
+                                       population.size = TRUE)  # Consider effect of cell proportion
+day3_cellchat_sub_imm <- filterCommunication(day3_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
+# Save
+saveRDS(day3_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d3_imm.rds"))
+
+# Day 15
+day15_cellchat_sub_imm <- computeCommunProb(day15_cellchat_sub_imm, type = "triMean", 
+                                        population.size = TRUE)  # Consider effect of cell proportion
+day15_cellchat_sub_imm <- filterCommunication(day15_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
+# Save
+saveRDS(day15_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d15_imm.rds"))
+```
+
+## Analyze communication networks
+
+```{r}
+day3_cellchat_sub_imm <- readRDS(file = file.path(script_output_dir, "processed_data/10_cellchat_d3_imm.rds"))
+day15_cellchat_sub_imm <- readRDS(file = file.path(script_output_dir, "processed_data/10_cellchat_d15_imm.rds"))
+
+# Define color of cell types in plots
+clstr_colors_imm <- c("Lymphoid other" = "#00A9FF", "T cells"= "#00BFC4", "MAIT cells" = "cyan",
+                  "Tcm" = "#8ab8fe", "B cells" = "navy", "Keratinocytes" = "#FF61CC", 
+                  "Epithelial" = "#0CB702", "Endothelial" = "#E68613", 
+                  "Muscle tissue" = "#C77CFF", "Connective tissue" = "#00BE67", 
+                  "Nervous tissue" = "#A52A2A", "Unknown" = "gray", 
+                  "Myeloid other" = "#F8766D", "Monocytes" = "#cb416b",
+                  "Granulocytes" = "#f8481c")
+
+# Define order cell types appear in plots
+new_levels_imm <- c("Lymphoid other", "T cells", "MAIT cells", "Tcm", "B cells", 
+                "Keratinocytes", "Epithelial", "Endothelial", "Muscle tissue",
+                "Connective tissue", "Nervous tissue", "Unknown", "Myeloid other",
+                "Monocytes", "Granulocytes")
+
+day3_cellchat_sub_imm <- setIdent(day3_cellchat_sub_imm, ident.use = "cytof_annot", levels = new_levels_imm[1:14])
+day15_cellchat_sub_imm <- setIdent(day15_cellchat_sub_imm, ident.use = "cytof_annot", levels = new_levels_imm)
+```
+
+**Day 3**
+
+Not interested in any of the ECM (extra-cellular matrix) pathways. Mark those for exclusion later when aggregating communication signal.
+
+```{r}
+to_incl <- day3_cellchat_sub_imm@LR$LRsig %>%
+  select(annotation, pathway_name) %>%
+  filter(!annotation == "ECM-Receptor") %>%
+  pull(pathway_name) %>%
+  unique()
+length(to_incl)
+```
+
+Circos plots
+
+```{r}
+# Get aggregated network by counting the number of links or summarizing the communication probability
+day3_cellchat_sub_imm <- aggregateNet(day3_cellchat_sub_imm, signaling = to_incl,
+                                      remove.isolate = FALSE)
+
+groupSize <- as.numeric(table(day3_cellchat_sub_imm@idents))
+
+# Visualize aggregated network 'weighted' by number of interactions
+netVisual_circle(day3_cellchat_sub_imm@net$count, 
+                 vertex.weight = groupSize, 
+                 weight.scale = T, 
+                 label.edge = F, 
+                 title.name = "Day 3: Number of interactions")
+
+# Visualize aggregated network weighted by strength of interactions
+d3_circle_imm <- netVisual_circle(day3_cellchat_sub_imm@net$weight, 
+                 vertex.weight = groupSize, 
+                 weight.scale = T, 
+                 label.edge = F, 
+                 title.name = "Day 3",
+                 color.use = clstr_colors_imm[1:14],
+                 alpha.edge = 0.8)
+d3_circle_imm
+
+# Save
+cairo_pdf(file = file.path(script_output_dir, "out/d3_cellchat.pdf"), 
+          width=5, height=5,
+          onefile = TRUE, bg = "transparent", family = "Arial")
+print(d3_circle_imm)
+dev.off()
+```
+
+Table of interactions (all)
+
+```{r}
+d3_tbl_imm <- netVisual_bubble(day3_cellchat_sub_imm,
+                 remove.isolate = FALSE,
+                 return.data = TRUE)$communication %>%
+  mutate(timepoint = "Day3") %>%
+  select(timepoint, source.target, ligand, receptor, interaction_name, prob, 
+         pval, pathway_name, annotation) %>%
+  arrange(desc(prob)) %>%
+  distinct()
+
+# Remove extra-cellular matrix pathways
+d3_tbl_no_ecm_imm <- d3_tbl_imm %>%
+  filter(annotation != "ECM-Receptor")
+```
+
+**Day 15**
+
+Circos plots
+
+```{r}
+# Get aggregated network by counting the number of links or summarizing the communication probability
+day15_cellchat_sub_imm <- aggregateNet(day15_cellchat_sub_imm)
+
+groupSize <- as.numeric(table(day15_cellchat_sub_imm@idents))
+
+# Visualize aggregated network 'weighted' by number of interactions
+netVisual_circle(day15_cellchat_sub_imm@net$count, 
+                 vertex.weight = groupSize, 
+                 weight.scale = T, 
+                 label.edge= F, 
+                 title.name = "Day 15: Number of interactions",
+                 color.use = clstr_colors_imm)
+
+# Visualize aggregated network weighted by strength of interactions
+d15_circle_imm <- netVisual_circle(day15_cellchat_sub_imm@net$weight, 
+                 vertex.weight = groupSize, 
+                 weight.scale = T, 
+                 label.edge= F, 
+                 title.name = "Day 15",
+                 color.use = clstr_colors_imm,
+                 alpha.edge = 0.8)
+d15_circle_imm
+
+# Save
+cairo_pdf(file = file.path(script_output_dir, "out/d15_cellchat.pdf"), 
+          width=5, height=5,
+          onefile = TRUE, bg = "transparent", family = "Arial")
+print(d15_circle_imm)
+dev.off()
+```
+
+Table of interactions (all)
+
+```{r}
+d15_tbl_imm <- netVisual_bubble(day15_cellchat_sub_imm,
+                 return.data = TRUE)$communication %>%
+  mutate(timepoint = "Day15") %>%
+  select(timepoint, source.target, ligand, receptor, interaction_name, prob, 
+         pval, pathway_name, annotation) %>%
+  arrange(desc(prob)) %>%
+  distinct()
+
+# Remove extra-cellular matrix pathways
+d15_tbl_no_ecm_imm <- d15_tbl_imm %>%
+  filter(annotation != "ECM-Receptor")
+```
+
+## Examine interactions
+Fyi, pval == 2 means p-value > 0.05 (inferred from dot size of bubble plot and the legend)
+
+```{r}
+# Show pathways involved in top X interactions at each day involving monocytes at days 3 and 15
+bubble_df <- bind_rows(d3_tbl_no_ecm_imm, d15_tbl_no_ecm_imm) %>%
+  filter(grepl("Monocytes", source.target)) %>%
+  group_by(timepoint) %>%
+  arrange(desc(prob)) %>%
+  slice_head(n = 20) %>%
+  ungroup() %>%
+  select(interaction_name) %>%
+  distinct() %>%
+  # Keep only the 'hottest' interactions
+  filter(!interaction_name %in% c("CD99_CD99", "CD99_PILRA",
+                                  "APP_CD74", "EREG_EGFR",
+                                  "PPIA_BSG"))
+
+source_target <- c("Keratinocytes", "Tcm", "Muscle tissue", "Endothelial", 
+                   "Epithelial", "Monocytes", "T cells")
+
+
+# Day 3: Monocytes are source
+d1 <- netVisual_bubble(day3_cellchat_sub_imm,
+                 color.heatmap = "viridis",
+                 sources.use = "Monocytes",
+                 targets.use = source_target,
+                 pairLR.use = bubble_df, 
+                 angle.x = 45,
+                 title.name = "Day 3") +
+  coord_flip()
+d1
+# Day 15: Monocytes are source
+d2 <- netVisual_bubble(day15_cellchat_sub_imm,
+                 color.heatmap = "viridis",
+                 sources.use = "Monocytes",
+                 targets.use = source_target,
+                 pairLR.use = bubble_df,
+                 angle.x = 45,
+                 title.name = "Day 15") +
+  coord_flip()
+
+
+# Day 3: Monocytes are target
+d3 <- netVisual_bubble(day3_cellchat_sub_imm,
+                 color.heatmap = "viridis",
+                 sources.use = source_target,
+                 targets.use = "Monocytes",
+                 pairLR.use = bubble_df,
+                 angle.x = 45,
+                 title.name = "Day 3") +
+  coord_flip()
+# Day 15: Monocytes are target
+d4 <- netVisual_bubble(day15_cellchat_sub_imm,
+                 color.heatmap = "viridis",
+                 sources.use = source_target,
+                 targets.use = "Monocytes",
+                 pairLR.use = bubble_df,
+                 angle.x = 45,
+                 title.name = "Day 15") +
+  coord_flip()
+```
+
+
+# Module expression
+
+Extract just the immune cells
+
+First subset and remove current normalized counts
+
+```{r}
+Idents(day3_annot) <- "eb_atlas_idents"
+day3_sub <- subset(day3_annot, idents = c("Lymphoid", "Myeloid"))
+DefaultAssay(day3_sub) <- "RNA"
+day3_sub[["SCT"]] <- NULL
+
+Idents(day15_annot) <- "eb_atlas_idents"
+day15_sub <- subset(day15_annot, idents = c("Lymphoid", "Myeloid"))
+DefaultAssay(day15_sub) <- "RNA"
+day15_sub[["SCT"]] <- NULL
+```
+
+Then normalize and reduce dimensions again
+
+```{r}
+norm_and_reduce <- function(dm_singlets) {
+  dm_singlets <- SCTransform(dm_singlets, 
+                             vars.to.regress = "percent.mt",
+                             verbose = FALSE)
+  dm_singlets <- RunPCA(dm_singlets, verbose = FALSE)  
+  dm_singlets <- FindNeighbors(dm_singlets, dims = 1:30)
+  dm_singlets <- RunUMAP(dm_singlets, dims = 1:30)
+  return(dm_singlets)
+}
+
+day3_sub <- norm_and_reduce(day3_sub)
+day15_sub <- norm_and_reduce(day15_sub)
+
+Idents(day3_sub) <- "cytof_annot"
+Idents(day15_sub) <- "cytof_annot"
+
+# Re-level object@ident
+pop_levels_d3 <- c("T cells", "MAIT cells", "Tcm", "B cells", "Lymphoid other", "Monocytes", "Myeloid other")
+pop_levels_d15 <- c("T cells", "MAIT cells", "Tcm", "B cells", "Lymphoid other", "Monocytes", "Myeloid other", "Granulocytes")
+
+day3_sub@active.ident <- factor(x = day3_sub@active.ident, levels = pop_levels_d3)
+day15_sub@active.ident <- factor(x = day15_sub@active.ident, levels = pop_levels_d15)
+
+# Define colors
+pop_colors <- c("Lymphoid other" = "#00A9FF", "T cells"= "#00BFC4", "MAIT cells" = "cyan",
+                  "Tcm" = "#8ab8fe", "B cells" = "blue",
+                  "Myeloid other" = "#F8766D", "Monocytes" = "#cb416b",
+                  "Granulocytes" = "#f8481c")
+```
+
+## Violin plots of module score
+
+```{r}
+# Gene modules to highlight
+enriched_neutr <- c('LIN7A','NCF4','EMR3','FCGR3A','S100P','FCGR3B','TNFRSF10C','C5AR1',
+                    'MGC31957','CHI3L1','NLRP12','CYP4F3','MXD1','SEPX1','MGAM','DGAT2',
+                    'RGL4','REPS2','VNN2','CXCR1','NFE2','KRT23','GPR109B','PYGL','FPR2',
+                    'G0S2','KCNJ15','LRRC4','FPR1','CREB5','FCGR2A','CMTM2','MANSC1',
+                    'CSF3R','FFAR2','RNF24','LRG1','ST6GALNAC2','ORM1','MME','CDA',
+                    'PROK2','PFKFB4','VNN3','SLC22A4','BASP1','TREM1','GLT1D1','GPR97',
+                    'PTAFR','STEAP4','ALPL','NPL','ARAP3','HSPA6','TYROBP','CFD','IMPA2',
+                    'DENND3','BTNL8','FRAT2','MBOAT7','TSPAN2','BEST1','FLJ10357','SLC40A1')
+
+enriched_mono <- unique(c('TNFSF13','MYCL1','EPB41L3','DPYSL2','RTN1','SLC31A2','FES','LGALS3',
+                    'HCK','APLP2','LGALS1','PTGS2','EMR1','AMICA1','DOCK5','CD4','LY96',
+                    'ARHGEF10L','TNFSF13B','LTBR','PGD','TNFRSF1B','LRRK2','DPYD','MGAM',
+                    'PTX3','LYZ','IL1R2','DOK3','CARD9','EVI5','GPR109B','DUSP6','MYO1F',
+                    'FGD4','HHEX','HAL','ST3GAL6','DYSF','RNASE6','SLC24A4','VNN1','NAIP',
+                    'RHOU','CD68','CXCR2','NACC2','SMARCD3','PADI4','TMEM176B','LGALS3',
+                    'SAMHD1','CTSS','EMILIN2','ACPP','F5','STEAP4','C19orf59','ACSL1',
+                    'PAK1','C1orf162','MOSC1','TLR1','PID1','BCL6','HLA-DMB','MPP1','AGPAT9'))
+
+modules <- list(enriched_neutr, enriched_mono)
+```
+
+Add module scores
+
+```{r}
+day3_sub_t <- AddModuleScore(object = day3_sub, features = modules,
+                             search = T, nbin = 18,
+                             name = "Module")  
+
+day15_sub_t <- AddModuleScore(object = day15_sub, features = modules,
+                             search = T, nbin = 18,
+                             name = "Module")  
+```
+
+Violin plots
+
+```{r}
+combined <- merge(day3_sub_t, day15_sub_t)
+
+combined@meta.data <- combined@meta.data %>%
+  mutate(orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
+
+saveRDS(combined, file = file.path(script_output_dir, "processed_data/11_combined_modules.rds"))
+
+neutr_vln <- VlnPlot(combined, "Module1", split.by = "orig.ident", 
+        cols = c("Day3" = "white", "Day15" = "gray50"), pt.size = 0) + 
+  ylim(-0.17, 0.52) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 9),
+        legend.text = element_text(size = 9),
+        legend.position = c(0.05, 0.9),
+        legend.key.size = unit(0.3, "cm"),
+        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
+  ggtitle("Neutrophils (I, II)")
+neutr_vln
+
+mono_vln <- VlnPlot(combined, "Module2", split.by = "orig.ident", 
+        cols = c("Day3" = "white", "Day15" = "gray50"), pt.size = 0) + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 9),
+        legend.text = element_text(size = 9),
+        legend.position = c(0.05, 0.9),
+        legend.key.size = unit(0.3, "cm"),
+        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
+  ggtitle("Monocytes (II, IV)")
+mono_vln
+
+
+grid_vln <- ggarrange(plotlist = list(neutr_vln, mono_vln), nrow = 2, ncol = 1) %>%
+  annotate_figure(left = text_grob("Module Score", rot = 90, size = 9))
+grid_vln
+
+# Save
+ggsave(file.path(script_output_dir, "out/Fig5_violin.png"), plot = grid_vln,
+       dpi = 300, width = 3.5, height = 5, device = "png")
+
+cairo_pdf(file = file.path(script_output_dir, "out/Fig5_violin.pdf"), 
+          width = 3.5, height = 5, bg = "transparent", family = "Arial")
+print(grid_vln)
+dev.off()
+```
+
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+

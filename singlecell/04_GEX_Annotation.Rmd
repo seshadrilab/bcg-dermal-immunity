@@ -1,0 +1,1061 @@
+---
+title: "GEX Annotation (BCG Challenge 10X)"
+author: "Emma Bishop"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries and data
+
+```{r, message=FALSE, warning=FALSE}
+library(Seurat)
+library(tidyverse)
+library(SingleR)
+library(celldex)
+library(knitr)
+library(Azimuth)
+library(cowplot)
+library(grDevices)
+
+set.seed(4)
+
+# Save all output, instead of just minimum required objects for the next scripts
+save_output <- TRUE
+
+# Top-level folder where script outputs should be stored
+script_output_dir <- "~/workspace/bcg_challenge_out_inh"
+
+day3_clstr <- readRDS(file = file.path(script_output_dir, "processed_data/5_singlets_with_adt_d3.rds"))
+day15_clstr <- readRDS(file = file.path(script_output_dir, "processed_data/5_singlets_with_adt_d15.rds"))
+```
+
+Starting number of cells
+
+```{r}
+length(day3_clstr$orig.ident)
+length(day15_clstr$orig.ident)
+```
+
+# Annotate with SingleR
+
+Use SingleR for high-level clusters.
+
+```{r, message=FALSE}
+# Load reference data
+# Note, must downgrade dbplyr to version 2.3.4 to avoid 'collect()' error
+ref_data <- HumanPrimaryCellAtlasData(ensembl = FALSE, cell.ont = "all")
+```
+
+**Day 3**
+
+```{r, fig.width=12, fig.height=8}
+# Note that better to use raw counts than SCTransform data (see SingleR issue #98)
+d3_norm_count <- GetAssayData(day3_clstr, layer = "counts", assay = "RNA")
+
+# Annotate
+d3_predictions <- SingleR(test = d3_norm_count, 
+                          ref = ref_data,
+                          labels = ref_data$label.main)
+day3_clstr[["SingleR_labels"]] <- d3_predictions$labels
+day3_clstr[["SingleR_prunedlabels"]] <- d3_predictions$pruned.labels
+
+# QC: Confidence scores
+d3_clusts <- day3_clstr$seurat_clusters
+
+plotScoreHeatmap(d3_predictions, 
+                 clusters = d3_clusts,
+                 order_by = "clusters")
+
+# QC: Number of cells it couldn't annotate
+summary(is.na(day3_clstr$SingleR_prunedlabels))
+```
+
+Visualize
+
+```{r}
+Idents(day3_clstr) <- "SingleR_prunedlabels"
+DimPlot(day3_clstr, group.by = "SingleR_prunedlabels") + ggtitle("Day 3 SingleR (Human Cell Atlas)")
+
+# Highlight cells it couldn't annotate
+d3_unannot <- day3_clstr@meta.data[is.na(day3_clstr@meta.data$SingleR_prunedlabels),]
+d3_num_unannot <- as.character(nrow(d3_unannot))
+DimPlot(day3_clstr, cells.highlight = rownames(d3_unannot)) +
+  NoLegend() +
+  ggtitle(paste0("Day 3: Cells without SingleR pruned label (n=", d3_num_unannot, ")"))
+```
+
+**Day 15**
+
+```{r, fig.width=12, fig.height=8}
+# Note that better to use raw counts than SCTransform data (see SingleR issue #98)
+d15_norm_count <- GetAssayData(day15_clstr, layer = "counts", assay = "RNA")
+
+# Annotate
+d15_predictions <- SingleR(test = d15_norm_count, ref = ref_data,
+                           labels = ref_data$label.main)
+day15_clstr[["SingleR_labels"]] <- d15_predictions$labels
+day15_clstr[["SingleR_prunedlabels"]] <- d15_predictions$pruned.labels
+
+# QC: Confidence scores
+d15_clusts <- day15_clstr$seurat_clusters
+
+plotScoreHeatmap(d15_predictions, 
+                 clusters = d15_clusts,
+                 order_by = "clusters")
+
+# QC: Number of cells it couldn't annotate
+summary(is.na(d15_predictions$pruned.labels))
+```
+
+Visualize
+
+```{r}
+Idents(day15_clstr) <- "SingleR_prunedlabels"
+DimPlot(day15_clstr) + ggtitle("Day 15 SingleR (Human Cell Atlas)")
+
+# Highlight cells it couldn't annotate
+d15_unannot <- day15_clstr@meta.data[is.na(day15_clstr@meta.data$SingleR_prunedlabels),]
+d15_num_unannot <- as.character(nrow(d15_unannot))
+DimPlot(day15_clstr, cells.highlight = rownames(d15_unannot)) +
+  NoLegend() +
+  ggtitle(paste0("Day 15: Cells without SingleR pruned label (n=", d15_num_unannot, ")"))
+```
+
+54 seems like a lot, I see these are mostly T cells and NK cells. Will see what Azimuth comes up with for annotation.
+
+```{r}
+# SingleR labels of these cells that don't have pruned labels
+table(d15_unannot$SingleR_labels)
+```
+
+Where are these NK cells located in the UMAP?
+
+```{r}
+unannot_nk <- d15_unannot %>%
+  filter(SingleR_labels == "NK_cell") %>%
+  rownames()
+
+DimPlot(day15_clstr, cells.highlight = unannot_nk) +
+  NoLegend() +
+  ggtitle(paste0("Day 15: Cells with NK_cell label and no pruned label (n=", 
+                 length(unannot_nk), ")"))
+```
+
+# Consolidate annotations
+
+```{r}
+lymphoid = c("T_cells", "NK_cell", "B_cell", "Pre-B_cell_CD34-", "Pro-B_cell_CD34+",
+             "HSC_CD34+")
+myeloid = c("Monocyte", "Macrophage", "DC", "Neutrophils",
+            "GMP",  # Granulocyte-Macrophage Progenitor?
+            "CMP")  # Common Myeloid Progenitor?
+muscle = c("Fibroblasts", "Smooth_muscle_cells", "Tissue_stem_cells", "iPS_cells")
+connective = c("Chondrocytes", "Osteoblasts", "MSC")
+nervous = c("Neurons", "Astrocyte")
+epithelial = c("Epithelial_cells")
+endothelial = c("Endothelial_cells")
+
+day3_clstr@meta.data <- day3_clstr@meta.data %>%
+  mutate(eb_atlas_idents = case_when(
+    SingleR_prunedlabels %in% lymphoid ~ "Lymphoid",
+    SingleR_prunedlabels %in% myeloid ~ "Myeloid",
+    SingleR_prunedlabels %in% muscle ~ "Muscle tissue",
+    SingleR_prunedlabels %in% connective ~ "Connective tissue",
+    SingleR_prunedlabels %in% nervous ~ "Nervous tissue",
+    SingleR_prunedlabels %in% epithelial ~ "Epithelial",
+    SingleR_prunedlabels %in% endothelial ~ "Endothelial",
+    is.na(SingleR_prunedlabels) ~ "Unknown",
+    .default = SingleR_prunedlabels
+  ))
+
+day15_clstr@meta.data <- day15_clstr@meta.data %>%
+  mutate(eb_atlas_idents = case_when(
+    SingleR_prunedlabels %in% lymphoid ~ "Lymphoid",
+    SingleR_prunedlabels %in% myeloid ~ "Myeloid",
+    SingleR_prunedlabels %in% muscle ~ "Muscle tissue",
+    SingleR_prunedlabels %in% connective ~ "Connective tissue",
+    SingleR_prunedlabels %in% nervous ~ "Nervous tissue",
+    SingleR_prunedlabels %in% epithelial ~ "Epithelial",
+    SingleR_prunedlabels %in% endothelial ~ "Endothelial",
+    is.na(SingleR_prunedlabels) ~ "Unknown",
+    .default = SingleR_prunedlabels
+  ))
+
+Idents(day3_clstr) <- "eb_atlas_idents"
+Idents(day15_clstr) <- "eb_atlas_idents"
+```
+
+Save
+
+```{r}
+day3_clstr_filt <- day3_clstr
+day15_clstr_filt <- day15_clstr
+
+if(save_output) {
+  saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d3.rds"))
+  saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/6_singler_d15.rds"))
+}
+```
+
+```{r}
+day3_clstr_filt <- readRDS(file = file.path(script_output_dir, "processed_data/6_singler_d3.rds"))
+day15_clstr_filt <- readRDS(file = file.path(script_output_dir, "processed_data/6_singler_d15.rds"))
+
+Idents(day3_clstr_filt) <- "eb_atlas_idents"
+Idents(day15_clstr_filt) <- "eb_atlas_idents"
+```
+
+Visualize
+
+#### High-level SingleR Human Cell Atlas Clusters
+
+```{r, fig.width=12, fig.height=8}
+day3_clstr_filt@meta.data <- day3_clstr_filt@meta.data %>%
+  mutate(eb_atlas_idents = factor(eb_atlas_idents,
+                                     levels = c("Keratinocytes",
+                                                "Lymphoid",
+                                                "Myeloid",
+                                                "Epithelial",
+                                                "Endothelial",
+                                                "Muscle tissue",
+                                                "Connective tissue",
+                                                "Nervous tissue",
+                                                "Unknown")))
+
+day15_clstr_filt@meta.data <- day15_clstr_filt@meta.data %>%
+  mutate(eb_atlas_idents = factor(eb_atlas_idents,
+                                     levels = c("Keratinocytes",
+                                                "Lymphoid",
+                                                "Myeloid",
+                                                "Epithelial",
+                                                "Endothelial",
+                                                "Muscle tissue",
+                                                "Connective tissue",
+                                                "Nervous tissue",
+                                                "Unknown")))
+
+Idents(day3_clstr_filt) <- "eb_atlas_idents"
+Idents(day15_clstr_filt) <- "eb_atlas_idents"
+
+clstr_colors <- c("Lymphoid" = "#F8766D", "Myeloid" = "#E68613",
+                 "Epithelial" = "#0CB702", "Connective tissue" = "#00BE67", 
+                 "Nervous tissue" = "#A52A2A", "Endothelial" = "#00A9FF",
+                 "Muscle tissue" = "#C77CFF", "Keratinocytes" = "#FF61CC", 
+                 "Unknown" = "gray")
+
+d1_with_leg <- DimPlot(day3_clstr_filt, pt.size = 0.4) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "bottom",
+        legend.spacing.x = unit(0.4, 'cm'),
+        legend.text = element_text(size=12, margin = margin(t = 1))) +
+  scale_color_manual(values = clstr_colors) +
+  guides(color = guide_legend(ncol = 5,
+                              override.aes = list(size=4))) +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+d1_with_leg
+
+d1 <- DimPlot(day3_clstr_filt, pt.size = 0.4) + 
+  ggtitle("DAY 3") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_color_manual(values = clstr_colors) +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+d1
+
+d2 <- DimPlot(day15_clstr_filt, pt.size = 0.4) + 
+  ggtitle("DAY 15") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "none") +
+  scale_color_manual(values = clstr_colors) +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+d2
+
+highlevel_legend <- cowplot::get_legend(d1_with_leg)
+```
+
+Number of cells
+
+**Day 3**
+
+```{r}
+length(day3_clstr_filt$orig.ident)  # Day 3 total
+
+table(day3_clstr_filt$eb_atlas_idents) %>%
+  kable(caption = "Day 3 high-level")
+
+table(day3_clstr_filt$eb_atlas_idents, day3_clstr_filt$PTID)
+```
+
+**Day 15**
+
+```{r}
+length(day15_clstr_filt$orig.ident)  # Day 15 total
+
+table(day15_clstr_filt$eb_atlas_idents) %>%
+  kable(caption = "Day 15 high-level")
+
+table(day15_clstr_filt$eb_atlas_idents, day15_clstr_filt$PTID)
+```
+
+# Markers
+
+Look at top 5 positive markers by logFC for each cell type.
+
+```{r, message=FALSE}
+# Day 3
+singler_markers_d3 <- FindAllMarkers(day3_clstr_filt, only.pos = TRUE, 
+                                     min.pct = 0.25, 
+                                     logfc.threshold = 0.25,
+                                     # Use MAST with raw counts
+                                     assay = "RNA",
+                                     slot = "counts",
+                                     test.use = "MAST")
+singler_markers_d3 %>%
+  group_by(cluster) %>%
+  slice_max(n = 5, order_by = avg_log2FC) %>%
+  kable(caption = "Day 3: Top 5 Markers")
+
+
+# Day 15
+singler_markers_d15 <- FindAllMarkers(day15_clstr_filt, only.pos = TRUE, 
+                                     min.pct = 0.25, 
+                                     logfc.threshold = 0.25,
+                                     # Use MAST with raw counts
+                                     assay = "RNA",
+                                     slot = "counts",
+                                     test.use = "MAST")
+singler_markers_d15 %>%
+  group_by(cluster) %>%
+  slice_max(n = 5, order_by = avg_log2FC) %>%
+  kable(caption = "Day 15: Top 5 Markers")
+```
+
+
+### CD45 (aka PTPRC) expression
+
+```{r}
+DefaultAssay(day3_clstr_filt) <- "SCT"
+DefaultAssay(day15_clstr_filt) <- "SCT"
+
+# CD45 expression
+cd45_d3 <- FeaturePlot(day3_clstr_filt, features = "PTPRC", label = TRUE, repel = TRUE) +
+  NoLegend() +
+  ggtitle("Day 3: CD45 ('PTPRC')")
+cd45_d3
+
+cd45_d15 <- FeaturePlot(day15_clstr_filt, features = "PTPRC", label = TRUE, repel = TRUE) +
+  NoLegend() +
+  ggtitle("Day 15: CD45 ('PTPRC')")
+cd45_d15
+```
+
+### Other specific markers
+
+* Lymphoid: IL7R
+* Myeloid: LYZ
+* Epithelial: S100A2
+* Connective tissue: DCN
+* Nervous tissue: DCT
+* Endothelial: FLT1
+* Muscle tissue: COL3A1
+* Keratinocyte: DMKN (epidermis-specific secreted protein)
+
+**Day 3**
+
+```{r}
+make_marker_plot <- function(obj, marker) {
+  out <- FeaturePlot(obj, features = marker, pt.size = 0.4) +
+  theme(legend.position = "none",
+        axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        plot.title = element_text(hjust = 0.5, 
+                                  size = 20,
+                                  face = "italic"))
+  return(out)
+}
+
+d3_1 <- make_marker_plot(day3_clstr_filt, "IL7R")
+d3_2 <- make_marker_plot(day3_clstr_filt, "LYZ")
+d3_3 <- make_marker_plot(day3_clstr_filt, "S100A2")
+d3_4 <- make_marker_plot(day3_clstr_filt, "DCN")
+d3_5 <- make_marker_plot(day3_clstr_filt, "DCT")
+d3_6 <- make_marker_plot(day3_clstr_filt, "FLT1")
+d3_7 <- make_marker_plot(day3_clstr_filt, "COL3A1")
+d3_8 <- make_marker_plot(day3_clstr_filt, "DMKN")
+
+d3_grid <- plot_grid(d3_1, d3_2, d3_3, d3_4, d3_5, d3_6, d3_7, d3_8, nrow = 2)
+d3_grid
+
+if (save_output) {
+  # PNG
+  ggsave(file.path(script_output_dir, "out/umap_markers_d3.png"), plot = d3_grid,
+       dpi = 300, width = 10, height = 6, device = "png")
+  # SVG
+  ggsave(file.path(script_output_dir, "out/umap_markers_d3.svg"), plot = d3_grid,
+       dpi = 300, width = 10, height = 6, device = "svg")
+}
+```
+
+**Day 15**
+
+```{r}
+d15_1 <- make_marker_plot(day15_clstr_filt, "IL7R")
+d15_2 <- make_marker_plot(day15_clstr_filt, "LYZ")
+d15_3 <- make_marker_plot(day15_clstr_filt, "S100A2")
+d15_4 <- make_marker_plot(day15_clstr_filt, "DCN")
+d15_5 <- make_marker_plot(day15_clstr_filt, "DCT")
+d15_6 <- make_marker_plot(day15_clstr_filt, "FLT1")
+d15_7 <- make_marker_plot(day15_clstr_filt, "COL3A1")
+d15_8 <- make_marker_plot(day15_clstr_filt, "DMKN")
+
+d15_grid <- plot_grid(d15_1, d15_2, d15_3, d15_4, d15_5, d15_6, d15_7, d15_8, nrow = 2)
+d15_grid
+
+if (save_output) {
+  # PNG
+  ggsave(file.path(script_output_dir, "out/umap_markers_d15.png"), plot = d15_grid,
+       dpi = 300, width = 10, height = 6, device = "png")
+  # SVG
+  ggsave(file.path(script_output_dir, "out/umap_markers_d15.svg"), plot = d15_grid,
+       dpi = 300, width = 10, height = 6, device = "svg")
+}
+```
+
+# Sub-cluster the immune cells
+
+First subset and remove current normalized counts
+
+```{r}
+day3_sub <- subset(day3_clstr_filt, idents = c("Lymphoid", "Myeloid"))
+DefaultAssay(day3_sub) <- "RNA"
+day3_sub[["SCT"]] <- NULL
+
+day15_sub <- subset(day15_clstr_filt, idents = c("Lymphoid", "Myeloid"))
+DefaultAssay(day15_sub) <- "RNA"
+day15_sub[["SCT"]] <- NULL
+```
+
+
+## Cluster again
+
+Same norm_and_reduce from GEX QC script.
+
+```{r, message=FALSE}
+norm_and_reduce <- function(dm_singlets) {
+  dm_singlets <- SCTransform(dm_singlets, 
+                             vars.to.regress = "percent.mt",
+                             verbose = FALSE)
+  dm_singlets <- RunPCA(dm_singlets, verbose = FALSE)  
+  dm_singlets <- FindNeighbors(dm_singlets, dims = 1:30)
+  dm_singlets <- RunUMAP(dm_singlets, dims = 1:30)
+  return(dm_singlets)
+}
+```
+
+**Day 3**
+
+Resolution = 0.4 is what Jolie used for the HAARVI paper and seems reasonable here.
+
+```{r}
+day3_sub <- norm_and_reduce(day3_sub)
+day3_sub_clstr <- FindClusters(day3_sub, verbose = FALSE, resolution = 0.4)
+```
+
+Visualize
+
+```{r, fig.width=10, fig.height=5}
+p7 <- DimPlot(day3_sub_clstr, label = TRUE) + 
+  NoLegend() +
+  ggtitle("Day 3 Seurat Sub-Clusters")
+p7
+```
+
+**Day 15**
+
+```{r}
+day15_sub <- norm_and_reduce(day15_sub)
+day15_sub_clstr <- FindClusters(day15_sub, verbose = FALSE, resolution = 0.4)
+```
+
+Visualize
+
+```{r}
+p8 <- DimPlot(day15_sub_clstr, label = TRUE) + 
+  NoLegend() +
+  ggtitle("Day 15 Seurat Sub-Clusters")
+p8
+```
+
+```{r}
+p7 + p8
+```
+
+## Annotate with Azimuth
+
+Use Azimuth (part of Seurat and recommended by recent review paper)
+
+The web app FAQs have helpful information for interpreting results:
+https://azimuth.hubmapconsortium.org/#How%20can%20I%20tell%20if%20my%20mapping%20results%20are%20accurate%3f
+
+```{r, fig.width=12, fig.height=8, message=FALSE, warning=FALSE}
+day3_sub_annot <- RunAzimuth(day3_sub_clstr, reference = "pbmcref")
+DimPlot(day3_sub_annot, group.by = "predicted.celltype.l2", label = TRUE, repel = TRUE) + 
+  ggtitle("Day 3 Azimuth Annotations") + 
+  NoLegend()
+
+day15_sub_annot <- RunAzimuth(day15_sub_clstr, reference = "pbmcref")
+DimPlot(day15_sub_annot, group.by = "predicted.celltype.l2", label = TRUE, repel = TRUE) + 
+  ggtitle("Day 15 Azimuth Annotations") + 
+  NoLegend()
+```
+
+## Consolidate Clusters
+
+To compare with Jolie's data and make things tidier.
+
+```{r}
+consol_azi <- function(in_obj) {
+  Idents(in_obj) <- "predicted.celltype.l2"
+  in_obj <- RenameIdents(object = in_obj,
+                         "B intermediate" = "B cells",
+                         "B memory" = "B cells",
+                         "NK Proliferating" = "NK",
+                         "NK_CD56bright" = "NK")
+  in_obj[["eb_idents"]] <- Idents(object = in_obj)
+  return(in_obj)
+}
+
+day3_sub_annot <- consol_azi(day3_sub_annot)
+day15_sub_annot <- consol_azi(day15_sub_annot)
+
+if(save_output) {
+  saveRDS(day3_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d3.rds"))
+  saveRDS(day15_sub_annot, file = file.path(script_output_dir, "processed_data/7_sub_annot_d15.rds"))
+}
+```
+
+```{r}
+day3_sub_annot <- readRDS(file = file.path(script_output_dir, "processed_data/7_sub_annot_d3.rds"))
+day15_sub_annot <- readRDS(file = file.path(script_output_dir, "processed_data/7_sub_annot_d15.rds"))
+```
+
+Get rid of the one Day 3 cell where eb_idents is NA (causes errors down the line).
+
+```{r}
+na_cell <- day3_sub_annot@meta.data %>%
+  filter(is.na(eb_idents)) %>%
+  rownames()
+length(na_cell)
+
+day3_sub_annot <- subset(x = day3_sub_annot, idents = na_cell, invert = TRUE)
+```
+
+How many cells of each type?
+
+**Day 3**
+
+```{r}
+length(day3_sub_annot$orig.ident)  # Day 3 immune total
+
+d3_immune_tally <- day3_sub_annot@meta.data %>%
+  group_by(eb_idents) %>%
+  tally()
+
+d3_immune_tally %>%
+  kable(caption = "Day 3 immune-level")
+
+table(day3_sub_annot$eb_idents, day3_sub_annot$PTID)
+```
+
+**Day 15**
+
+```{r}
+length(day15_sub_annot$orig.ident)  # Day 15 immune total
+
+d15_immune_tally <- day15_sub_annot@meta.data %>%
+  group_by(eb_idents) %>%
+  tally()
+
+d15_immune_tally %>%
+  kable(caption = "Day 15 immune-level")
+
+table(day15_sub_annot$eb_idents, day15_sub_annot$PTID)
+```
+
+Remove types with < 5 cells
+
+```{r}
+# Day 3
+d3_imm_exclude <- d3_immune_tally %>%
+  filter(n < 5) %>%
+  pull(eb_idents)
+print(d3_imm_exclude)
+
+d3_subset <- subset(x = day3_sub_annot, 
+                    idents = d3_imm_exclude, invert = TRUE)
+
+# Day 15
+d15_imm_exclude <- d15_immune_tally %>%
+  filter(n < 5) %>%
+  pull(eb_idents)
+print(d15_imm_exclude)
+
+d15_subset <- subset(x = day15_sub_annot, 
+                    idents = d15_imm_exclude, invert = TRUE)
+```
+
+Set factor levels and colors of immune subtypes
+
+```{r}
+d3_subset@meta.data$eb_idents <- factor(d3_subset@meta.data$eb_idents,
+                                levels = c("CD4 TCM", "CD4 TEM", "CD4 Proliferating",
+                                           "CD8 TCM", "CD8 TEM", "CD8 Proliferating", "CD8 Naive", 
+                                           "Treg", "dnT", "gdT", "MAIT", "CD14 Mono", "CD16 Mono",
+                                           "cDC1", "cDC2", "pDC","ILC", "NK", "Platelet", "B cells",
+                                           "HSPC"))
+
+# No CD8 Proliferating, gdT, CD16 Mono, unlike D3
+d15_subset@meta.data$eb_idents <- factor(d15_subset@meta.data$eb_idents,
+                                levels = c("CD4 TCM", "CD4 TEM", "CD4 Proliferating",
+                                           "CD8 TCM", "CD8 TEM", "CD8 Naive", 
+                                           "Treg", "MAIT", "CD14 Mono",
+                                           "cDC1", "cDC2", "pDC","ILC", "NK", "Platelet", "B cells",
+                                           "HSPC"))
+subtype_cols <- c(
+  "B cells" = "darkorange", 
+  "cDC1" = "mediumpurple", 
+  "cDC2" = "mediumpurple",
+  "pDC" = "mediumpurple",
+  "ILC" = "darkgreen", 
+  "CD14 Mono" = "#FF61CC", 
+  "CD16 Mono" = "#FF61CC", 
+  "NK" = "#0CB702", 
+  "Platelet" = "gold", 
+  "Tcm" = "dodgerblue", 
+  "CD8 Naive" = "#00BFC4", 
+  "CD8 Proliferating" = "#00BFC4", 
+  "CD8 TEM" = "#00BFC4", 
+  "CD4 Proliferating" = "darkblue", 
+  "CD4 TEM" = "darkblue", 
+  "CD4 TCM" = "darkblue",
+  "Treg" = "cyan",
+  "dnT" = "cyan", 
+  "gdT" = "cyan", 
+  "MAIT" = "cyan", 
+  "HSPC" = "saddlebrown")
+```
+
+Visualize
+
+```{r}
+d3_sub_plt <- DimPlot(d3_subset, group.by = "eb_idents", pt.size = 0.4,
+        cols = subtype_cols) + 
+  ggtitle("DAY 3") + 
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "bottom",
+        legend.spacing.x = unit(0.4, 'cm'),
+        legend.text = element_text(size=12, margin = margin(t = 1))) +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size=4))) +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+d3_sub_plt
+
+d15_sub_plt <- DimPlot(d15_subset, group.by = "eb_idents", pt.size = 0.4,
+        cols = subtype_cols) + 
+  ggtitle("DAY 15") + 
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 16),
+        legend.position = "bottom",
+        legend.spacing.x = unit(0.4, 'cm'),
+        legend.text = element_text(size=12, margin = margin(t = 1))) +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size=4))) +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+d15_sub_plt
+```
+
+
+```{r}
+# Get legend
+subtype_legend <- cowplot::get_legend(d3_sub_plt)
+
+# Plots without legend
+d3_sub_noleg <- DimPlot(d3_subset, group.by = "eb_idents", pt.size = 0.4,
+        cols = subtype_cols) + 
+  ggtitle("DAY 3") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2") 
+
+d15_sub_noleg <- DimPlot(d15_subset, group.by = "eb_idents", pt.size = 0.4,
+        cols = subtype_cols) + 
+  ggtitle("DAY 15") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        legend.position = "none") +
+  scale_x_discrete("UMAP1") +
+  scale_y_discrete("UMAP2")
+```
+
+Save objects
+
+```{r}
+if (save_output) {
+  saveRDS(d3_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
+  saveRDS(d15_subset, file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
+}
+
+d3_subset <- readRDS(file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
+d15_subset <- readRDS(file = file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
+```
+
+Number of immune cells
+
+```{r}
+length(d3_subset$orig.ident)  # Day 3
+length(d15_subset$orig.ident)  # Day 15
+```
+
+Seurat clusters
+
+```{r}
+d1 <- DimPlot(d3_subset, pt.size = 0.4, group.by = "seurat_clusters", label = TRUE) + 
+  NoLegend() +
+  ggtitle("Day 3")
+
+d2 <- DimPlot(d15_subset, pt.size = 0.4, group.by = "seurat_clusters", label = TRUE) + 
+  NoLegend() +
+  ggtitle("Day 15")
+
+d1 + d2
+```
+
+By PTID
+
+```{r}
+ptid_colors <- c("1" = "salmon", "5" = "orange", "7" = "#7570B3",
+                 "8" = "#0CB702", "9" = "#A6761D", "10" = "#00BFC4",
+                 "11" = "#C77CFF", "12" = "#FF61CC", "13" = "darkgreen",
+                 "16" = "darkblue")
+
+d3 <- DimPlot(d3_subset, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  NoLegend() +
+  ggtitle("Day 3")
+
+d4 <- DimPlot(d15_subset, pt.size = 0.4, group.by = "PTID", cols = ptid_colors) + 
+  NoLegend() +
+  ggtitle("Day 15")
+
+d3 + d4
+```
+
+By ARM
+
+```{r}
+d5 <- DimPlot(d3_subset, pt.size = 0.4, group.by = "ARM") +
+  NoLegend() +
+  ggtitle("Day 3")
+
+d6 <- DimPlot(d15_subset, pt.size = 0.4, group.by = "ARM") + 
+  NoLegend() +
+  ggtitle("Day 15")
+
+d5 + d6
+```
+
+## QC Azimuth
+
+Look at confidence and mapping scores. Note that Azimuth doesn't have neutrophils in its reference.
+
+### Confidence Score
+
+* 0 to 1 (high confidence is > 0.75)
+* Reflects the confidence associated with each annotation
+* Cells with high-confidence annotations reflect predictions that are supported by multiple consistent anchors
+
+```{r, warning=FALSE, fig.width=12, fig.height=6}
+ft1 <- FeaturePlot(d3_subset, features = "predicted.celltype.l2.score", 
+            label = TRUE, 
+            repel = TRUE, 
+            pt.size = 0.4) +
+  ggtitle("Day 3 confidence scores") +
+  NoLegend()
+
+ft2 <- FeaturePlot(d15_subset, features = "predicted.celltype.l2.score", 
+            label = TRUE, 
+            repel = TRUE,
+            pt.size = 0.4) +
+  ggtitle("Day 15 confidence scores")
+
+cowplot::plot_grid(ft1, ft2)
+```
+
+### Mapping Score
+
+* 0 to 1
+* Reflects confidence that this cell is well represented by the reference
+* Reflects how well the unique structure of a cell’s local neighborhood is preserved during reference mapping
+
+```{r, warning=FALSE, fig.width=12, fig.height=6}
+ft3 <- FeaturePlot(d3_subset, features = "mapping.score", 
+            label = TRUE, 
+            repel = TRUE,
+            pt.size = 0.6) +
+  ggtitle("Day 3 mapping scores") +
+  NoLegend()
+
+ft4 <- FeaturePlot(d15_subset, features = "mapping.score", 
+            label = TRUE, 
+            repel = TRUE,
+            pt.size = 0.6) +
+  ggtitle("Day 15 mapping scores")
+
+cowplot::plot_grid(ft3, ft4)
+```
+
+### Neutrophils
+
+Neutrophils aren't in the Azimuth references, and so they'd be annotated as CD14 monocytes (possibly with low mapping scores). See:
+
+* "What if my query dataset contains cell types that aren't present in the reference?" in the [docs](https://azimuth.hubmapconsortium.org/)
+* This GitHub [issue](https://github.com/satijalab/azimuth/issues/41)
+
+Here, I check for low mapping scores and neutrophil markers in CD14 monocytes (none express CEACAM5). **There doesn't seem to be a defined neutrophil population at either timepoint**
+
+```{r, warning=FALSE}
+d3_cd14mono <- subset(d3_subset, subset = eb_idents == "CD14 Mono")
+d15_cd14mono <- subset(d15_subset, subset = eb_idents == "CD14 Mono")
+```
+
+Mapping scores
+
+```{r, fig.width=10, fig.height=6}
+ft5 <- FeaturePlot(d3_cd14mono, features = "mapping.score", pt.size = 0.6,
+                   label = TRUE) +
+  ggtitle("Day 3 mapping scores") +
+  NoLegend()
+
+ft6 <- FeaturePlot(d15_cd14mono, features = "mapping.score", pt.size = 0.6,
+                    label = TRUE) +
+  ggtitle("Day 15 mapping scores")
+
+cowplot::plot_grid(ft5, ft6)
+```
+
+Neutrophil marker expression
+
+```{r, warning=FALSE, fig.width=10, fig.height=10}
+# No clear pattern, especially not connected to the mapping scores
+ft7 <- FeaturePlot(d3_cd14mono, features = c("CEACAM1", "CEACAM6", "ITGAM", 
+                                             "FCGR3A", "FUT4", "AZU1", 
+                                             "ELANE", "MPO"), pt.size = 0.1)
+ft8 <- FeaturePlot(d15_cd14mono, features = c("CEACAM1", "CEACAM6", "ITGAM", 
+                                              "FCGR3A", "FUT4", "AZU1", 
+                                              "ELANE", "MPO"), pt.size = 0.1)
+
+cowplot::plot_grid(ft7, labels = "Day 3")
+cowplot::plot_grid(ft8, labels = "Day 15")
+```
+
+## Immune GEX markers
+
+* T cell: CD3D
+* Monocyte: CTSS
+* DC: HLA-DPA1
+* NK: NKG7
+* B cell: MS4A1
+
+**Day 3**
+
+```{r}
+d3_11 <- make_marker_plot(d3_subset, "CD3D")
+d3_12 <- make_marker_plot(d3_subset, "CTSS")
+d3_13 <- make_marker_plot(d3_subset, "HLA-DPA1")
+d3_14 <- make_marker_plot(d3_subset, "NKG7")
+d3_15 <- make_marker_plot(d3_subset, "MS4A1")
+
+d3_grid_imm <- plot_grid(d3_11, d3_12, d3_13, d3_14, d3_15, nrow = 3)
+d3_grid_imm + DimPlot(d3_subset, pt.size = 0.4, group.by = "eb_idents",
+                      cols = subtype_cols)
+```
+
+**Day 15**
+
+```{r}
+# TODO: Decide on final order to make plots (maybe look at mast cells earlier, include those in immmune subset and see where they cluster for further confirmation they should be their own thing)
+
+d15_11 <- make_marker_plot(d15_subset, "CD3D")
+d15_12 <- make_marker_plot(d15_subset, "CTSS")
+d15_13 <- make_marker_plot(d15_subset, "HLA-DPA1")
+# Some monocytes expressing this, but not the other markers for NK-like monocytes
+d15_14 <- make_marker_plot(d15_subset, "NKG7")
+d15_15 <- make_marker_plot(d15_subset, "MS4A1")
+
+d15_grid_imm <- plot_grid(d15_11, d15_12, d15_13, d15_14, d15_15, nrow = 2)
+d15_grid_imm + DimPlot(d15_subset, pt.size = 0.4, group.by = "eb_idents",
+                       cols = subtype_cols)
+```
+
+Save
+
+```{r}
+if (save_output) {
+  # PNG
+  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.png"), plot = d3_grid_imm,
+       dpi = 300, width = 6, height = 6, device = "png")
+  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.png"), plot = d15_grid_imm,
+       dpi = 300, width = 6, height = 6, device = "png")
+
+  # SVG
+  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.svg"), plot = d3_grid_imm,
+       dpi = 300, width = 6, height = 6, device = "svg")
+  ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.svg"), plot = d15_grid_imm,
+       dpi = 300, width = 6, height = 6, device = "svg")
+}
+```
+
+
+## Replace SingleR labels with Azimuth ones
+
+Following instructions from [issue #1748](https://github.com/satijalab/seurat/issues/1748). I'll replace the SingleR_prunedlabels with the more detailed Azimuth ones to create a 'detailed' meta.data column. I'll replace my consolidated SingleR annotations with my consolidated Azimuth ones to create a 'consolidated' meta.data column.
+
+```{r}
+replace_labels <- function(main_obj, sub_obj) {
+  # 'detailed' labels
+  Idents(main_obj) <- "SingleR_prunedlabels"
+  Idents(sub_obj) <- "predicted.celltype.l2"
+  main_obj$detailed <- as.character(Idents(main_obj))
+  main_obj$detailed[Cells(sub_obj)] <- as.character(Idents(sub_obj))
+  # 'consolidated' labels
+  Idents(main_obj) <- "eb_atlas_idents"
+  Idents(sub_obj) <- "eb_idents"
+  main_obj$consolidated <- as.character(Idents(main_obj))
+  main_obj$consolidated[Cells(sub_obj)] <- as.character(Idents(sub_obj))
+  return(main_obj)
+}
+
+day3_clstr_filt <- replace_labels(day3_clstr_filt, d3_subset)
+day15_clstr_filt <- replace_labels(day15_clstr_filt, d15_subset)
+```
+
+
+**Day 15 Unknowns**
+
+One group of cells seem to be mast cells based on:
+
+* Tight clustering with eachother and away from other clusters (even though distances in UMAPs are not meaningful)
+* 'Unknown' annotation (Azimuth and SingleR do not have a mast cell category)
+* Relatively high expression of mast cell marker TPSAB1 in all of these cells
+
+These are part of a Seurat cluster that's spread around the UMAP, so I'll re-annotate based on TPSAB1 expression.
+
+```{r}
+mastplt <- FeaturePlot(day15_clstr_filt, features = "TPSAB1")
+mastplt
+
+# Get and look at the cells expressing high levels of TPSAB1
+mast_cells <- WhichCells(day15_clstr_filt, expression = TPSAB1 > 1.1)
+DimPlot(day15_clstr_filt, cells.highlight = list(mast_cells))
+
+# Re-annotate
+day15_clstr_filt@meta.data <- day15_clstr_filt@meta.data %>%
+  mutate(barcode = rownames(.)) %>%
+  mutate(consolidated = case_when(
+    barcode %in% mast_cells ~ "Mast cells",
+    .default = consolidated
+  ))
+```
+
+Note that there doesn't seem to be a mast cell cluster at Day 3.
+
+```{r}
+FeaturePlot(day3_clstr_filt, features = "TPSAB1")
+```
+
+## Update atlas-level labels for Myeloid and Lymphoid
+
+Use Azimuth annotations to decide if a cell is Myeloid or Lymphoid
+
+```{r}
+# Leave these cell types as-is: HSPC, pDC, cDC1, cDC2
+myeloid_type <- c("CD14 Mono", "CD16 Mono", "Platelet", "Mast cells")
+
+lymphoid_type <- c("B cells", "CD4 Proliferating", "CD4 TCM", "CD4 TEM",
+                   "CD8 Naive", "CD8 Proliferating", "CD8 TCM", "CD8 TEM",
+                   "dnT", "gdT", "MAIT", "NK", "ILC", "Treg")
+
+# Day 3
+day3_clstr_filt@meta.data <- day3_clstr_filt@meta.data %>%
+  mutate(eb_atlas_idents = case_when(
+    consolidated %in% myeloid_type ~ "Myeloid",
+    consolidated %in% lymphoid_type ~ "Lymphoid",
+    .default = eb_atlas_idents
+  ))
+
+# Day 15
+day15_clstr_filt@meta.data <- day15_clstr_filt@meta.data %>%
+  mutate(eb_atlas_idents = case_when(
+    consolidated %in% myeloid_type ~ "Myeloid",
+    consolidated %in% lymphoid_type ~ "Lymphoid",
+    .default = eb_atlas_idents
+  ))
+```
+
+Save
+
+```{r}
+# These are necessary for the next script
+saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
+saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
+
+# QC PDF
+if (save_output) {
+    cairo_pdf(file=file.path(script_output_dir, "out/qc_annotation.pdf"), 
+              width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
+  print(cd45_d3)
+  print(cd45_d15)
+  print(d1 + d2)
+  print(d3 + d4)
+  print(d5 + d6)
+  print(ft1)
+  print(ft2)
+  print(ft3)
+  print(ft4)
+  print(ft5)
+  print(ft6)
+  print(mastplt)
+  dev.off()
+}
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
