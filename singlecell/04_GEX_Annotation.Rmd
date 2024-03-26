@@ -406,9 +406,6 @@ d3_grid
 # PNG
 ggsave(file.path(script_output_dir, "out/umap_markers_d3.png"), plot = d3_grid,
      dpi = 300, width = 10, height = 6, device = "png")
-# SVG
-ggsave(file.path(script_output_dir, "out/umap_markers_d3.svg"), plot = d3_grid,
-     dpi = 300, width = 10, height = 6, device = "svg")
 ```
 
 **Day 15**
@@ -430,9 +427,6 @@ d15_grid
 # PNG
 ggsave(file.path(script_output_dir, "out/umap_markers_d15.png"), plot = d15_grid,
      dpi = 300, width = 10, height = 6, device = "png")
-# SVG
-ggsave(file.path(script_output_dir, "out/umap_markers_d15.svg"), plot = d15_grid,
-     dpi = 300, width = 10, height = 6, device = "svg")
 ```
 
 # Sub-cluster the immune cells
@@ -917,12 +911,6 @@ ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.png"), plot = d3
      dpi = 300, width = 6, height = 6, device = "png")
 ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.png"), plot = d15_grid_imm,
      dpi = 300, width = 6, height = 6, device = "png")
-
-# SVG
-ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.svg"), plot = d3_grid_imm,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.svg"), plot = d15_grid_imm,
-     dpi = 300, width = 6, height = 6, device = "svg")
 ```
 
 

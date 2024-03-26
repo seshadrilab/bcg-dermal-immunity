@@ -637,17 +637,6 @@ ggsave(file.path(script_output_dir, "out/umap_d3_arm.png"), plot = p3,
      dpi = 300, width = 6, height = 6, device = "png")
 ggsave(file.path(script_output_dir, "out/legend_arm.png"), plot = arm_legend,
      dpi = 300, width = 2, height = 1, device = "png")
-
-
-# SVG
-ggsave(file.path(script_output_dir, "out/umap_d3_seurat.svg"), plot = p1,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/umap_d3_ptid.svg"), plot = p2,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/umap_d3_arm.svg"), plot = p3,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/legend_arm.svg"), plot = arm_legend,
-     dpi = 300, width = 2, height = 1, device = "svg")
 ```
 
 ## Day 15
@@ -818,14 +807,6 @@ ggsave(file.path(script_output_dir, "out/umap_d15_ptid.png"), plot = p12,
      dpi = 300, width = 6, height = 6, device = "png")
 ggsave(file.path(script_output_dir, "out/umap_d15_arm.png"), plot = p13,
      dpi = 300, width = 6, height = 6, device = "png")
-
-# SVG
-ggsave(file.path(script_output_dir, "out/umap_d15_seurat.svg"), plot = p11,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/umap_d15_ptid.svg"), plot = p12,
-     dpi = 300, width = 6, height = 6, device = "svg")
-ggsave(file.path(script_output_dir, "out/umap_d15_arm.svg"), plot = p13,
-     dpi = 300, width = 6, height = 6, device = "svg")
 ```
 
 # Session Info

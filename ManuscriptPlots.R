@@ -942,8 +942,6 @@ pgrid_adj
 
 ggsave(file.path(outdir, "cytof_line_adj.png"), plot = pgrid_adj,
        dpi = 300, width = 7.75, height = 3.75, device = "png")
-ggsave(file.path(outdir, "cytof_line_adj.svg"), plot = pgrid_adj,
-       dpi = 300, width = 7.75, height = 3.75, device = "svg")
 
 
 
@@ -968,8 +966,6 @@ cytof_qc_nrs
 
 ggsave(file.path(outdir, "cytof_qc_nrs.png"), plot = cytof_qc_nrs,
        dpi = 300, width = 6, height = 3, device = "png")
-ggsave(file.path(outdir, "cytof_qc_nrs.svg"), plot = cytof_qc_nrs,
-       dpi = 300, width = 6, height = 3, device = "svg")
 
 
 ############################
