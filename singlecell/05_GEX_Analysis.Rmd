@@ -35,6 +35,9 @@ library(cowplot)
 
 set.seed(4)
 
+# Whether to re-run cellchat or just load saved RDS object from last run
+rerun_cellchat <- TRUE
+
 # Top-level folder where script outputs should be stored
 script_output_dir <- file.path(here::here(), "output")
 ```
@@ -261,29 +264,33 @@ dev.off()
 Log normalize and choose database.
 
 ```{r}
-DefaultAssay(day3_annot) <- "RNA"
-DefaultAssay(day15_annot) <- "RNA"
-
-# Log-normalize
-day3_annot <- NormalizeData(day3_annot)
-day15_annot <- NormalizeData(day15_annot)
-
-# Create CellChat object
-day3_cellchat_imm <- createCellChat(day3_annot, group.by = "cytof_annot")
-day15_cellchat_imm <- createCellChat(day15_annot, group.by = "cytof_annot")
-
-# Set the interaction database and add to the object
-day3_cellchat_imm@DB <- CellChatDB.human
-day15_cellchat_imm@DB <- CellChatDB.human
+if (rerun_cellchat) {
+  DefaultAssay(day3_annot) <- "RNA"
+  DefaultAssay(day15_annot) <- "RNA"
+  
+  # Log-normalize
+  day3_annot <- NormalizeData(day3_annot)
+  day15_annot <- NormalizeData(day15_annot)
+  
+  # Create CellChat object
+  day3_cellchat_imm <- createCellChat(day3_annot, group.by = "cytof_annot")
+  day15_cellchat_imm <- createCellChat(day15_annot, group.by = "cytof_annot")
+  
+  # Set the interaction database and add to the object
+  day3_cellchat_imm@DB <- CellChatDB.human
+  day15_cellchat_imm@DB <- CellChatDB.human
+}
 ```
 
 Subset GEX data to just genes in the signalling pathways database (to save time).
 
 ```{r}
-# Subset the expression data of signaling genes for saving computation cost.
-# This step is necessary even if using the whole database
-day3_cellchat_sub_imm <- subsetData(day3_cellchat_imm)
-day15_cellchat_sub_imm <- subsetData(day15_cellchat_imm)
+if (rerun_cellchat) {
+  # Subset the expression data of signaling genes for saving computation cost.
+  # This step is necessary even if using the whole database
+  day3_cellchat_sub_imm <- subsetData(day3_cellchat_imm)
+  day15_cellchat_sub_imm <- subsetData(day15_cellchat_imm)
+}
 ```
 
 Identify over-expressed signaling genes associated with each cell group.
@@ -297,13 +304,13 @@ Default settings being used by `identifyOverExpressedGenes`:
 
 
 ```{r}
-# Parallelize
-future::plan("multisession", workers = 12)
-
-day3_cellchat_sub_imm <- identifyOverExpressedGenes(day3_cellchat_sub_imm)
-day15_cellchat_sub_imm <- identifyOverExpressedGenes(day15_cellchat_sub_imm)
-
-# TODO: Try projecting GEX data onto protein-protein interaction network and see if interactions look different
+if (rerun_cellchat) {
+  # Parallelize
+  future::plan("multisession", workers = 12)
+  
+  day3_cellchat_sub_imm <- identifyOverExpressedGenes(day3_cellchat_sub_imm)
+  day15_cellchat_sub_imm <- identifyOverExpressedGenes(day15_cellchat_sub_imm)
+}
 ```
 
 Identify over-expressed ligand-receptor interactions (pairs) within the used CellChatDB
@@ -312,8 +319,10 @@ Default settings being used by `identifyOverExpressedInteractions`:
 - Require that both ligand and receptor from one pair are over-expressed (variable.both = TRUE)
 
 ```{r}
-day3_cellchat_sub_imm <- identifyOverExpressedInteractions(day3_cellchat_sub_imm)
-day15_cellchat_sub_imm <- identifyOverExpressedInteractions(day15_cellchat_sub_imm)
+if (rerun_cellchat) {
+  day3_cellchat_sub_imm <- identifyOverExpressedInteractions(day3_cellchat_sub_imm)
+  day15_cellchat_sub_imm <- identifyOverExpressedInteractions(day15_cellchat_sub_imm)
+}
 ```
 
 
@@ -326,19 +335,21 @@ Non-default settings being used by `computeCommunProb`:
 They advise in the docs "Set population.size = TRUE if analyzing unsorted single-cell transcriptomes, with the reason that abundant cell populations tend to send collectively stronger signals than the rare cell populations."
 
 ```{r}
-# Day 3
-day3_cellchat_sub_imm <- computeCommunProb(day3_cellchat_sub_imm, type = "triMean", 
-                                       population.size = TRUE)  # Consider effect of cell proportion
-day3_cellchat_sub_imm <- filterCommunication(day3_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
-# Save
-saveRDS(day3_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d3_imm.rds"))
-
-# Day 15
-day15_cellchat_sub_imm <- computeCommunProb(day15_cellchat_sub_imm, type = "triMean", 
-                                        population.size = TRUE)  # Consider effect of cell proportion
-day15_cellchat_sub_imm <- filterCommunication(day15_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
-# Save
-saveRDS(day15_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d15_imm.rds"))
+if (rerun_cellchat) {
+  # Day 3
+  day3_cellchat_sub_imm <- computeCommunProb(day3_cellchat_sub_imm, type = "triMean", 
+                                         population.size = TRUE)  # Consider effect of cell proportion
+  day3_cellchat_sub_imm <- filterCommunication(day3_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
+  # Save
+  saveRDS(day3_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d3_imm.rds"))
+  
+  # Day 15
+  day15_cellchat_sub_imm <- computeCommunProb(day15_cellchat_sub_imm, type = "triMean", 
+                                          population.size = TRUE)  # Consider effect of cell proportion
+  day15_cellchat_sub_imm <- filterCommunication(day15_cellchat_sub_imm)  # Exclude if <10 cells in a group (default)
+  # Save
+  saveRDS(day15_cellchat_sub_imm, file = file.path(script_output_dir, "processed_data/10_cellchat_d15_imm.rds"))
+}
 ```
 
 ## Analyze communication networks
