@@ -65,10 +65,10 @@ cellcount_bar <- plotCounts(sce, group_by = "sample_id", color_by = "timepoint")
 cellcount_bar
 
 # Save
-ggsave(file.path(outdir, "out/SuppFig3_cellcount_bar.png"), plot = cellcount_bar,
+ggsave(file.path(outdir, "plots/SuppFig3_cellcount_bar.png"), plot = cellcount_bar,
        dpi = 300, width = 5, height = 3, device = "png")
 
-cairo_pdf(file = file.path(outdir, "out/SuppFig3_cellcount_bar.pdf"), 
+cairo_pdf(file = file.path(outdir, "plots/SuppFig3_cellcount_bar.pdf"), 
           width = 5, height = 3, bg = "transparent", family = "Arial")
 print(cellcount_bar)
 dev.off()
@@ -93,10 +93,10 @@ nrs_boxplot <- plotNRS(sce, color_by = "timepoint") +
 nrs_boxplot
 
 # Save
-ggsave(file.path(outdir, "out/SuppFig3_nrs_boxplot.png"), plot = nrs_boxplot,
+ggsave(file.path(outdir, "plots/SuppFig3_nrs_boxplot.png"), plot = nrs_boxplot,
        dpi = 300, width = 7, height = 4.2, device = "png")
 
-cairo_pdf(file = file.path(outdir, "out/SuppFig3_nrs_boxplot.pdf"), 
+cairo_pdf(file = file.path(outdir, "plots/SuppFig3_nrs_boxplot.pdf"), 
           width = 7, height = 4.2, bg = "transparent", family = "Arial")
 print(nrs_boxplot)
 dev.off()
@@ -256,7 +256,7 @@ table_out <- table %>%
            .default = "Day_15"),
          .after = "cluster_id")
 
-write_csv(table_out, file.path(outdir, "out/BCG_Skin_Biopsy_CD45_Subsets.csv"))
+write_csv(table_out, file.path(outdir, "BCG_Skin_Biopsy_CD45_Subsets.csv"))
 
 # write.csv(table, "C:/Users/Steven Makatsa/OneDrive - UW/Shared Documents - SeshadriLab/Members/YuKrystle/Projects_and_Data/BCG_Skin_Biopsies/Mass Cytometry/ProcessedData/Rerun FlowSOM_SM/out/BCG_Skin_Biopsy_CD45_Subsets_All markers.csv", row.names=FALSE)
 

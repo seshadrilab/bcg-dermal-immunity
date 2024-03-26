@@ -404,7 +404,7 @@ d3_grid <- plot_grid(d3_1, d3_2, d3_3, d3_4, d3_5, d3_6, d3_7, d3_8, nrow = 2)
 d3_grid
 
 # PNG
-ggsave(file.path(script_output_dir, "out/umap_markers_d3.png"), plot = d3_grid,
+ggsave(file.path(script_output_dir, "plots/umap_markers_d3.png"), plot = d3_grid,
      dpi = 300, width = 10, height = 6, device = "png")
 ```
 
@@ -425,7 +425,7 @@ d15_grid
 
 
 # PNG
-ggsave(file.path(script_output_dir, "out/umap_markers_d15.png"), plot = d15_grid,
+ggsave(file.path(script_output_dir, "plots/umap_markers_d15.png"), plot = d15_grid,
      dpi = 300, width = 10, height = 6, device = "png")
 ```
 
@@ -907,9 +907,9 @@ Save
 
 ```{r}
 # PNG
-ggsave(file.path(script_output_dir, "out/umap_markers_immune_d3.png"), plot = d3_grid_imm,
+ggsave(file.path(script_output_dir, "plots/umap_markers_immune_d3.png"), plot = d3_grid_imm,
      dpi = 300, width = 6, height = 6, device = "png")
-ggsave(file.path(script_output_dir, "out/umap_markers_immune_d15.png"), plot = d15_grid_imm,
+ggsave(file.path(script_output_dir, "plots/umap_markers_immune_d15.png"), plot = d15_grid_imm,
      dpi = 300, width = 6, height = 6, device = "png")
 ```
 
@@ -1008,7 +1008,7 @@ saveRDS(day3_clstr_filt, file = file.path(script_output_dir, "processed_data/9_f
 saveRDS(day15_clstr_filt, file = file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
 
 # QC PDF
-cairo_pdf(file=file.path(script_output_dir, "out/qc_annotation.pdf"), 
+cairo_pdf(file=file.path(script_output_dir, "plots/qc_annotation.pdf"), 
           width=11, height=8.5, onefile = TRUE, bg = "transparent", family = "Arial") 
 print(cd45_d3)
 print(cd45_d15)

@@ -21,7 +21,7 @@ set.seed(4)
 ## Load data ##
 ###############
 
-outdir <- file.path(here::here(), "output/out")
+outdir <- file.path(here::here(), "output/plots")
 
 # Heatmap data from Andrew Fiore-Gartland
 heat_dat <- read_csv("~/Downloads/deg_heatmap_values.csv")

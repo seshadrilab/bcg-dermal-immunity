@@ -172,7 +172,7 @@ d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]])
 Save plots
 
 ```{r}
-cairo_pdf(file=file.path(script_output_dir, "out/qc_adt_vlnplots.pdf"), width=8, height=5,
+cairo_pdf(file=file.path(script_output_dir, "plots/qc_adt_vlnplots.pdf"), width=8, height=5,
     onefile = TRUE, bg = "transparent", family = "Arial") 
 print(d3_plts[[1]] / (d3_plts[[2]] | d3_plts[[3]]))
 print(d15_plts[[1]] / (d15_plts[[2]] | d15_plts[[3]]))

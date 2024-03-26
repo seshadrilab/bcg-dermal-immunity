@@ -244,10 +244,10 @@ myelgrid
 composition_grid <- plot_grid(lymphgrid, myelgrid, ncol = 1, rel_heights = c(2, 1))
 composition_grid
 
-ggsave(file.path(script_output_dir, "out/Fig5_boxplots.png"), plot = composition_grid,
+ggsave(file.path(script_output_dir, "plots/Fig5_boxplots.png"), plot = composition_grid,
        dpi = 300, width = 3, height = 4.5, device = "png")
 
-cairo_pdf(file = file.path(script_output_dir, "out/Fig5_boxplots.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_boxplots.pdf"), 
           width = 3, height = 4.5, bg = "transparent", family = "Arial")
 print(composition_grid)
 dev.off()
@@ -406,7 +406,7 @@ d3_circle_imm <- netVisual_circle(day3_cellchat_sub_imm@net$weight,
 d3_circle_imm
 
 # Save
-cairo_pdf(file = file.path(script_output_dir, "out/d3_cellchat.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/d3_cellchat.pdf"), 
           width=5, height=5,
           onefile = TRUE, bg = "transparent", family = "Arial")
 print(d3_circle_imm)
@@ -459,7 +459,7 @@ d15_circle_imm <- netVisual_circle(day15_cellchat_sub_imm@net$weight,
 d15_circle_imm
 
 # Save
-cairo_pdf(file = file.path(script_output_dir, "out/d15_cellchat.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/d15_cellchat.pdf"), 
           width=5, height=5,
           onefile = TRUE, bg = "transparent", family = "Arial")
 print(d15_circle_imm)
@@ -675,10 +675,10 @@ grid_vln <- ggarrange(plotlist = list(neutr_vln, mono_vln), nrow = 2, ncol = 1) 
 grid_vln
 
 # Save
-ggsave(file.path(script_output_dir, "out/Fig5_violin.png"), plot = grid_vln,
+ggsave(file.path(script_output_dir, "plots/Fig5_violin.png"), plot = grid_vln,
        dpi = 300, width = 3.5, height = 5, device = "png")
 
-cairo_pdf(file = file.path(script_output_dir, "out/Fig5_violin.pdf"), 
+cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_violin.pdf"), 
           width = 3.5, height = 5, bg = "transparent", family = "Arial")
 print(grid_vln)
 dev.off()
