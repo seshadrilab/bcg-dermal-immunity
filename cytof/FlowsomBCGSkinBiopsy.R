@@ -12,11 +12,11 @@ library(ggpubr)
 outdir <- file.path(here::here(), "output")
 
 # Load fcs files (n=10 at Day 3, n=8 at Day 15)
-fcs <- dir(here::here("cytof/data/BCG Skin Biopsy 1 Live CD45+ cells FCS"), full.names=T, pattern="*.fcs$") 
+fcs <- dir("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/BCG Skin Biopsy 1 Live CD45+ cells FCS", full.names=T, pattern="*.fcs$") 
 
 # Load metadata and panel
-md <- read_excel(here::here("cytof/data/2022_human_BCG_challenge_metadata_for_flowsom.xlsx"))
-panel <- read_excel(here::here("cytof/data/2022_human_BCG_challenge_CyTOF_panel.xlsx"))
+md <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/2022_human_BCG_challenge_metadata_for_flowsom.xlsx")
+panel <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/2022_human_BCG_challenge_CyTOF_panel.xlsx")
 
 # Create flowSet object
 fs <- read.flowSet(fcs, transformation = FALSE, truncate_max_range = FALSE)
