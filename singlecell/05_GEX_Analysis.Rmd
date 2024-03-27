@@ -36,7 +36,7 @@ library(cowplot)
 set.seed(4)
 
 # Whether to re-run cellchat or just load saved RDS object from last run
-rerun_cellchat <- TRUE
+rerun_cellchat <- FALSE
 
 # Top-level folder where script outputs should be stored
 script_output_dir <- file.path(here::here(), "output")
@@ -49,7 +49,7 @@ day15_annot <- readRDS(file = file.path(script_output_dir, "processed_data/9_fin
 
 # Collapse annotations to match CyTOF groups
 
-Define new annotations to match CyTOF cell types as best we can. I don't feel like I can confidently label "cytotoxic" T cells.
+Define new annotations to match CyTOF cell types as best we can. I don't think I can confidently label "cytotoxic" T cells.
 
 ```{r}
 # Make CyTOF-related annotations that include non-immune cells
@@ -188,8 +188,7 @@ make_boxplot <- function(in_df, current_cluster) {
     geom_jitter(size = 2, shape = 21, width = 0.1, aes(fill = orig.ident)) +
     scale_fill_manual(values =  c("Day3" = "white", "Day15" = "gray50")) +
     theme_classic() +
-    theme(text = element_text(family="Arial"),
-          axis.title.x = element_blank(),
+    theme(axis.title.x = element_blank(),
           axis.title.y = element_blank(),
           axis.text.y = element_text(color="black", size = 9),
           axis.text.x = element_text(color="black", size = 9),
@@ -293,7 +292,7 @@ if (rerun_cellchat) {
 }
 ```
 
-Identify over-expressed signaling genes associated with each cell group.
+Identify over-expressed **signaling genes** associated with each cell group.
 
 Default settings being used by `identifyOverExpressedGenes`:
 - Only returns positive markers (only.pos=TRUE)
@@ -313,7 +312,7 @@ if (rerun_cellchat) {
 }
 ```
 
-Identify over-expressed ligand-receptor interactions (pairs) within the used CellChatDB
+Identify over-expressed **ligand-receptor interactions** (pairs) within the used CellChatDB
 
 Default settings being used by `identifyOverExpressedInteractions`:
 - Require that both ligand and receptor from one pair are over-expressed (variable.both = TRUE)
