@@ -16,6 +16,7 @@ library(here)
 library(FlowSOM)
 library(tidyverse)
 library(ggpubr)
+library(ggbeeswarm)
 
 outdir <- file.path(here::here(), "output")
 
@@ -267,3 +268,80 @@ table_out <- table %>%
          .after = "cluster_id")
 
 write_csv(table_out, file.path(outdir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
+
+###########################################
+## CyTOF cell type frequencies line plot ##
+###########################################
+
+all_count <- table_out %>%
+  dplyr::filter(!cluster_id %in% c("BCG12_1", "BCG07_1")) %>% # drop BCG12 because no Day 15 timepoint)
+  pivot_longer(cols = 4:17, names_to = "cluster", values_to = "freq") %>%
+  mutate(freq = as.numeric(freq)) %>%
+  mutate(timepoint = gsub("_", "", timepoint)) %>%
+  mutate(timepoint = factor(timepoint, levels = c("Day3", "Day15")),
+         cluster = factor(cluster, levels = c("T cells", "MAIT cells", "Cytotoxic T cells", "CD11c+ T cells", "Tcm",
+                                              "B cells", "CD68+ Macs", "CD68+CD163low Macs", "CD163+ Macs", "mDCs",
+                                              "CD11b- Granulocytes", "CD11b+ Granulocytes", "Monocytes", "Undefined")))
+
+# Get list to iterate through
+clusters <- levels(all_count$cluster)
+clusters
+
+make_mag_plots <- function(count_df, current_cluster, adjust_p) {
+  count_df <- count_df %>%
+    dplyr::filter(cluster == current_cluster)
+  # Signed-rank test
+  test <- wilcox.test(formula("freq ~ timepoint"), data = count_df, paired = TRUE)
+
+  if(adjust_p) {
+    test_df <- data.frame(p = as.numeric(unlist(test)["p.value"])) %>%
+      mutate(p.adj = p.adjust(p, method = "bonferroni", n = length(clusters))) %>%
+      mutate(p_val_text = if_else(p.adj < 0.001, "p<0.001", paste0("p=", formatC(round(p.adj, 3), format='f', digits=3))))
+  } else {
+    test_df <- data.frame(p = as.numeric(unlist(test)["p.value"])) %>%
+      mutate(p_val_text = if_else(p < 0.001, "p<0.001", paste0("p=", formatC(round(p, 3), format='f', digits=3))))
+  }
+  
+  current_plot <- ggplot(count_df, aes(x = timepoint, y = freq)) +
+    geom_line(aes(group = patient_id)) +
+    geom_beeswarm(aes(fill = timepoint), size = 2, shape = 21, cex = 3) +  # Use shape for outline appearance
+    scale_fill_manual(values =  c("Day3" = "white", "Day15" = "gray50")) +
+    theme_classic() +
+    theme(text = element_text(family="Arial"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(color="black", size = 9),
+          axis.text.x = element_text(color="black", size = 9),
+          plot.title = element_text(hjust = 0.5, size = 9),
+          panel.grid.major.x = element_blank(),
+          legend.position = "none",
+          plot.margin = margin(0.3, 0.2, 0.1, 0.2, "cm")) +
+    labs(title = current_cluster)
+  
+  plot_ylims <- ggplot_build(current_plot)$layout$panel_params[[1]]$y.range
+  current_plot <- current_plot + 
+    annotate("text", x = 1.5, y = plot_ylims[2] + 0.2*diff(plot_ylims),
+             label = test_df$p_val_text, size = 3) +
+    coord_cartesian(ylim = c(plot_ylims[[1]], plot_ylims[[2]] + 0.35*diff(plot_ylims)))
+}
+
+# Unadjusted p-values
+all_plots <- purrr::pmap(.l = list(clusters),
+                         .f = function(n) {
+                           make_mag_plots(all_count, current_cluster = n, adjust_p = FALSE)
+                         })
+
+names(all_plots) <- clusters
+pgrid <- ggarrange(plotlist = all_plots, nrow = 3, ncol = 5)
+pgrid <- annotate_figure(pgrid, left = text_grob("Proportion CD45+ (%)", rot = 90, size = 9))
+pgrid
+
+# Save
+ggsave(file.path(outdir, "plots/Fig4_cytof_line.png"), plot = pgrid,
+       dpi = 300, width = 7.75, height = 3.75, device = "png")
+
+cairo_pdf(file = file.path(outdir, "plots/Fig4_cytof_line.pdf"), 
+          width = 7.75, height = 3.75, bg = "transparent", family = "Arial")
+print(pgrid)
+dev.off()
+
