@@ -18,6 +18,9 @@ fcs <- dir("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/BCG 
 md <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/2022_human_BCG_challenge_metadata_for_flowsom.xlsx")
 panel <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/2022_human_BCG_challenge_CyTOF_panel.xlsx")
 
+# Load manual annotations
+merging_table1 <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/BCG_challenge_cluster_annotations_24.xlsx")
+
 # Create flowSet object
 fs <- read.flowSet(fcs, transformation = FALSE, truncate_max_range = FALSE)
 
