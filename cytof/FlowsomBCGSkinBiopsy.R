@@ -345,3 +345,9 @@ cairo_pdf(file = file.path(outdir, "plots/Fig4_cytof_line.pdf"),
 print(pgrid)
 dev.off()
 
+##################
+## Session Info ##
+##################
+
+sessionInfo()
+
