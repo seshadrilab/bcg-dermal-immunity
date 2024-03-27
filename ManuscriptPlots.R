@@ -95,26 +95,23 @@ cfu_log <- micro %>%
 micro2 <- micro %>%
   mutate(Day = gsub(" ", "_", Day)) %>%
   unite("sample", PTID:Day, remove = F)
-micro2
+head(micro2)
 
 cytof2 <- all_full_count %>%
   unite("sample", patient_id:timepoint, remove = F)
-cytof2
+head(cytof2)
 
 micro_cytof <- left_join(cytof2, micro2, by = "sample") %>%
-  select(-c(cluster_id, group, age, sex, Treatment, PTID, Day, sample)) %>%
+  select(-c(cluster_id, Treatment, PTID, Day, sample)) %>%
   drop_na()
-micro_cytof
-# 
-# write_csv(micro_cytof, "~/Desktop/micro_cytof.csv")
+head(micro_cytof)
 
 # From long to wide
-# micro_cytof <- read_csv("~/Desktop/micro_cytof.csv")
 micro_cytof_wide <- pivot_wider(micro_cytof, 
                                 id_cols = patient_id, 
                                 names_from = timepoint, 
                                 values_from = `B cells`:RS)
-micro_cytof_wide
+head(micro_cytof_wide)
 
 # Do subtraction
 wide_cols <- colnames(micro_cytof_wide)
@@ -267,24 +264,14 @@ out_cfu_all <- make_cfu_plot(cfu_all, stat_cfu)
 out_cfu_all
 
 
-# Save
-ggsave(file.path(outdir, "Fig1_dotplot_cfu.png"), plot = out_cfu_all,
-       dpi = 300, width = 3.75, height = 3.25, device = "png")
-
-cairo_pdf(file = file.path(outdir, "Fig1_dotplot_cfu.pdf"), 
-          width=3.75, height=3.25, bg = "transparent", family = "Arial")
-print(out_cfu_all)
-dev.off()
-
-
 # Make with log10 scale
 
-cfu_log <- cfu_all %>%
+cfu_log <- micro %>%
+  mutate(CFU = as.numeric(CFU)) %>%
   mutate(cfu_logaxis = case_when(
     CFU == 0 ~ 1,
     .default = CFU)) %>%
   mutate(cfu_logaxis = log10(cfu_logaxis))
-
 
 stat_log <- cfu_log %>%
   group_by(Day) %>%
@@ -413,12 +400,18 @@ dev.off()
 # Kendall tau correlation (sanity check that matches plot version)
 cor.test(micro$MVT, micro$CFU, method=c("kendall"))
 
-corr_mvt_cfu <- ggscatter(cfu_log, x = "MVT", y = "CFU", add = "reg.line") +
+micro2 <- micro %>%
+  mutate(cfu_log = case_when(
+    CFU == 0 ~ 1,
+    .default = CFU))
+
+corr_mvt_cfu <- ggscatter(micro2, x = "MVT", y = "cfu_log", add = "reg.line") +
   geom_point(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +
   scale_fill_manual(values = colors) +
   stat_cor(method = "kendall", cor.coef.name = "tau", size = 4) +
   xlim(0, 150) +
   xlab('Maximum pre-rRNA:rDNA ratio') +
+  ylab('CFU') +
   scale_y_log10(limits = c(1,1500000),
                 breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -447,12 +440,13 @@ dev.off()
 # Kendall tau correlation (sanity check that matches plot version)
 cor.test(micro$CFU, micro$RS, method=c("kendall"))
 
-corr_cfu_rs <- ggscatter(cfu_log, x = "RS", y = "CFU", add = "reg.line") +
+corr_cfu_rs <- ggscatter(micro2, x = "RS", y = "cfu_log", add = "reg.line") +
   geom_point(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +
   scale_fill_manual(values = colors) +
   stat_cor(method = "kendall", cor.coef.name = "tau", size = 4) +
   xlim(0, 310) +
   xlab('R:S ratio') +
+  ylab('CFU') +
   scale_y_log10(limits = c(1,1500000),
                 breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -481,7 +475,7 @@ dev.off()
 # Kendall tau correlation (sanity check that matches plot version)
 cor.test(micro$MVT, micro$RS, method=c("kendall"))
 
-corr_mvt_rs <- ggscatter(micro, x = "RS", y = "MVT", add = "reg.line") +
+corr_mvt_rs <- ggscatter(micro2, x = "RS", y = "MVT", add = "reg.line") +
   geom_point(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +
   scale_fill_manual(values = colors) +
   stat_cor(method = "kendall", cor.coef.name = "tau", size = 4) +
@@ -511,7 +505,7 @@ dev.off()
 ## Correlation plots legend ##
 ##############################
 
-corr_legend_plt <- ggscatter(micro, x = "RS", y = "MVT", add = "reg.line") +
+corr_legend_plt <- ggscatter(micro2, x = "RS", y = "MVT", add = "reg.line") +
   geom_point(aes(fill = Treatment), size = 6, shape = 21, cex = 3) +
   scale_fill_manual(values = colors) +
   stat_cor(method = "kendall", cor.coef.name = "tau", size = 6) +
