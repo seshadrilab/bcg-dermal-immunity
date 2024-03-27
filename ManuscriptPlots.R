@@ -1,5 +1,5 @@
 # Author: Emma Bishop
-# Micro analysis methods from Chandler Church
+# Micro analysis methods from E. Chandler Church
 
 library(tidyverse)
 library(readxl)
@@ -21,24 +21,26 @@ set.seed(4)
 ## Load data ##
 ###############
 
+script_output_dir <- file.path(here::here(), "output")
+
 outdir <- file.path(here::here(), "output/plots")
 
 # Heatmap data from Andrew Fiore-Gartland
 heat_dat <- read_csv("~/Downloads/deg_heatmap_values.csv")
 
 # All cells
-day3_clstr_filt <- readRDS("~/workspace/bcg_challenge_out_inh/processed_data/9_final_annot_d3.rds")
-day15_clstr_filt <- readRDS( "~/workspace/bcg_challenge_out_inh/processed_data/9_final_annot_d15.rds")
+day3_clstr_filt <- readRDS(file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
+day15_clstr_filt <- readRDS(file.path(script_output_dir, "processed_data/9_final_annot_d15.rds"))
 
 # Immune cells
-d3_subset <- readRDS("~/workspace/bcg_challenge_out_inh/processed_data/8_annot_sub_final_d3.rds")
-d15_subset <- readRDS("~/workspace/bcg_challenge_out_inh/processed_data/8_annot_sub_final_d15.rds")
+d3_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_final_d3.rds"))
+d15_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
 
 # Micro data
 micro_f <- "~/Downloads/Copy of Combined CFU MVT RS data.xlsx"
 
 # CyTOF cell population frequencies
-all_full_count <- read_csv("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/BCG_Skin_Biopsy_CD45_Subsets.csv")
+all_full_count <- read_csv(file.path(script_output_dir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
 
 # Colors
 ptid_colors <- c("BCG01" = "salmon", "BCG05" = "orange", "BCG07" = "#7570B3",
@@ -241,7 +243,7 @@ stat_cfu_no_outlier
 stat_cfu_d3 <- stat_cfu_no_outlier %>%
   filter(Day == "Day 3")
 
-# Make plots
+# Make plots with linear scale
 make_cfu_plot <- function(df, usestat) {
   out_cfu <- ggplot(df, aes(x = Treatment, y = cfu_new, group = Treatment)) +
     geom_beeswarm(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +  # Use shape for outline appearance
@@ -291,7 +293,6 @@ stat_log <- cfu_log %>%
   add_xy_position(x = "Treatment")
 stat_log
 
-
 out_cfu_log <- ggplot(cfu_log, aes(x = Treatment, y = cfu_logaxis, group = Treatment)) +
   geom_beeswarm(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +  # Use shape for outline appearance
   scale_fill_manual(values = colors) +
@@ -309,6 +310,7 @@ out_cfu_log <- ggplot(cfu_log, aes(x = Treatment, y = cfu_logaxis, group = Treat
   stat_pvalue_manual(stat_log, label.size = 3.5, bracket.size = 0.2)
 out_cfu_log
 
+# Save
 ggsave(file.path(outdir, "Fig1_dotplot_cfu_log10.png"), plot = out_cfu_log,
        dpi = 300, width = 3.75, height = 3.25, device = "png")
 
@@ -614,10 +616,6 @@ umap_arm <- DimPlot(d3_d15_integ, group.by = "ARM",
 umap_arm
 
 
-# DimPlot(d3_d15_integ, group.by = "SEX")
-# FeaturePlot(d3_d15_integ, "AGE")
-
-
 all_umap <- DimPlot(d3_d15_integ,
                     pt.size = 0.005) +
   guides(x = axis, y = axis) +
@@ -646,9 +644,8 @@ ggsave(file.path(outdir, "SuppFig4_umap_arm.png"), plot = umap_arm,
        dpi = 300, width = 4, height = 4, device = "png")
 
 
-
 # Save PDFs
-cairo_pdf(file = file.path(outdir, "Fig6_uumap_all.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig6_umap_all.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(all_umap)
 dev.off()
@@ -892,7 +889,6 @@ anno = anno_mark(at = row_idx,
                  padding = 1)
 
 # Draw heatmap
-ht_opt$message = FALSE
 
 bulk_rna_heatmap <- draw(
   Heatmap(heatmap_mat, 
