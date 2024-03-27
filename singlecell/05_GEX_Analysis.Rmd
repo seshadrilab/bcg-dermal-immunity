@@ -645,7 +645,7 @@ day15_sub_t <- AddModuleScore(object = day15_sub, features = modules,
                              name = "Module")  
 ```
 
-Violin plots
+Combine and save
 
 ```{r}
 combined <- merge(day3_sub_t, day15_sub_t)
@@ -654,7 +654,11 @@ combined@meta.data <- combined@meta.data %>%
   mutate(orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
 
 saveRDS(combined, file = file.path(script_output_dir, "processed_data/11_combined_modules.rds"))
+```
 
+Violin plots
+
+```{r}
 neutr_vln <- VlnPlot(combined, "Module1", split.by = "orig.ident", 
         cols = c("Day3" = "white", "Day15" = "gray50"), pt.size = 0) + 
   ylim(-0.17, 0.52) +
