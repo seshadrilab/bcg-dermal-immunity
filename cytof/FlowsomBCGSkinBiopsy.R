@@ -20,6 +20,14 @@ library(ggbeeswarm)
 
 outdir <- file.path(here::here(), "output")
 
+# Create folders for data if needed
+if(!dir.exists(file.path(script_output_dir))) {
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "processed_data")))
+  dir.create(file.path(script_output_dir, "processed_data"), recursive = T)
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "plots")))
+  dir.create(file.path(script_output_dir, "plots"), recursive = T)
+}
+
 # Load fcs files (n=10 at Day 3, n=8 at Day 15)
 fcs <- dir("/home/emmabishop/workspace/human-bcg-challenge-cytof/cytof/data/BCG Skin Biopsy 1 Live CD45+ cells FCS", full.names=T, pattern="*.fcs$") 
 

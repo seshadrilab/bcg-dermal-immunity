@@ -22,6 +22,15 @@ set.seed(4)
 ###############
 
 script_output_dir <- file.path(here::here(), "output")
+outdir <- file.path(here::here(), "output/plots")
+
+# Create folders for data if needed
+if(!dir.exists(file.path(script_output_dir))) {
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "processed_data")))
+  dir.create(file.path(script_output_dir, "processed_data"), recursive = T)
+  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "plots")))
+  dir.create(file.path(script_output_dir, "plots"), recursive = T)
+}
 
 outdir <- file.path(here::here(), "output/plots")
 
