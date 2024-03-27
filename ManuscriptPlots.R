@@ -628,7 +628,7 @@ all_umap <- LabelClusters(all_umap, id = "ident", size = 4, repel = T, box.paddi
 all_umap
 
 # Save PNGs
-ggsave(file.path(outdir, "Fig6_umap_all.png"), plot = all_umap,
+ggsave(file.path(outdir, "Fig5_umap_all.png"), plot = all_umap,
        dpi = 300, width = 4, height = 4, device = "png")
 ggsave(file.path(outdir, "SuppFig4_umap_time.png"), plot = umap_time,
        dpi = 300, width = 4, height = 4, device = "png")
@@ -639,7 +639,7 @@ ggsave(file.path(outdir, "SuppFig4_umap_arm.png"), plot = umap_arm,
 
 
 # Save PDFs
-cairo_pdf(file = file.path(outdir, "Fig6_umap_all.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig5_umap_all.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(all_umap)
 dev.off()
@@ -800,16 +800,16 @@ imm_legend <- ggpubr::get_legend(umap_immune_legend)
 imm_legend2 <- as_ggplot(imm_legend)
 
 # Save PNG
-ggsave(file.path(outdir, "Fig6_umap_immune.png"), plot = umap_immune,
+ggsave(file.path(outdir, "Fig5_umap_immune.png"), plot = umap_immune,
        dpi = 300, width = 4, height = 4, device = "png")
 # Save PDF
-cairo_pdf(file = file.path(outdir, "Fig6_umap_immune.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig5_umap_immune.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(umap_immune)
 dev.off()
 
 # Save legend
-cairo_pdf(file = file.path(outdir, "Fig6_umap_imm_legend.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig5_umap_imm_legend.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(imm_legend2)
 dev.off()
