@@ -1,5 +1,4 @@
 # Author: Emma Bishop
-# Micro analysis methods from E. Chandler Church
 
 library(tidyverse)
 library(readxl)
@@ -140,16 +139,16 @@ to_corr <- changes %>%
   select(starts_with("Change")) %>%
   drop_na()
 
-# First, do correlations for everything, and for micro stuff that have interesting, 
-# as in correlation abs(r) > 0.5, check p value manually
+# Do correlations for everything, keeping those with some hint of positive or 
+# negative correlation (abs(r) > 0.5)
 correlations <- to_corr %>% 
   corrr::correlate() %>%
   corrr::stretch() %>%
   filter(abs(r) > 0.5) %>%
   filter(x %in% c("Change_CFU", "Change_RS", "Change_MVT"))
 
+# Manually inspect correlations, sorting by greatest abs(R)
 correlations %>%
-  # Sort by greatest R
   arrange(desc(abs(r)))
 
 # Test which with an abs R >=0.6 are significant
@@ -216,7 +215,6 @@ save_plt(rs_mait, "Fig4_correlation_rs_mait")
 ## CFU (on solid 7H10 media) ##
 ###############################
 
-# From the xkcd color survey
 colors <- c("Non-INH" = "#c5c9c7", "INH" = "#1d5dec")
 
 cfu_all <- micro %>%
@@ -324,7 +322,7 @@ stat_mvt <- micro %>%
   add_xy_position(x = "Treatment")
 stat_mvt
 
-# Make plot
+# Make dot plot
 out_mvt <- ggplot(micro, aes(x = Treatment, y = MVT, group = Treatment)) +
   geom_beeswarm(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +  # Use shape for outline appearance
   stat_summary(fun.y = "mean", geom = "crossbar", size = 0.5,
@@ -367,7 +365,7 @@ stat_rs <- micro %>%
   add_xy_position(x = "Treatment")
 stat_rs
 
-# Make plot
+# Make dot plot
 out_rs <- ggplot(micro, aes(x = Treatment, y = RS, group = Treatment)) +
   geom_beeswarm(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +  # Use shape for outline appearance
   stat_summary(fun.y = "mean", geom = "crossbar", size = 0.5,
@@ -402,7 +400,8 @@ dev.off()
 ## Correlation rRNA:rDNA vs CFU ##
 ##################################
 
-# Kendall tau correlation (sanity check that matches plot version)
+# Kendall tau correlation
+# Using Kendall tau per E. Chandler Church
 cor.test(micro$MVT, micro$CFU, method=c("kendall"))
 
 micro2 <- micro %>%
@@ -442,7 +441,8 @@ dev.off()
 ## Correlation CFU vs R:S ##
 ############################
 
-# Kendall tau correlation (sanity check that matches plot version)
+# Kendall tau correlation
+# Using Kendall tau per E. Chandler Church
 cor.test(micro$CFU, micro$RS, method=c("kendall"))
 
 corr_cfu_rs <- ggscatter(micro2, x = "RS", y = "cfu_log", add = "reg.line") +
@@ -477,7 +477,8 @@ dev.off()
 ## Correlation rRNA:rDNA vs R:S ##
 ##################################
 
-# Kendall tau correlation (sanity check that matches plot version)
+# Kendall tau correlation
+# Using Kendall tau per E. Chandler Church
 cor.test(micro$MVT, micro$RS, method=c("kendall"))
 
 corr_mvt_rs <- ggscatter(micro2, x = "RS", y = "MVT", add = "reg.line") +
@@ -569,7 +570,7 @@ axis <- ggh4x::guide_axis_truncated(
   trunc_upper = unit(1.75, "cm")
 )
 
-# How much overlap is there?
+# Do cells separate by time point in UMAP space?
 umap_time <- DimPlot(d3_d15_integ, group.by = "orig.ident",
         pt.size = 0.005)+
   guides(x = axis, y = axis) +
@@ -584,6 +585,7 @@ umap_time <- DimPlot(d3_d15_integ, group.by = "orig.ident",
   ggtitle("Timepoint")
 umap_time
 
+# Do cells separate by PTID in UMAP space?
 umap_ptid <- DimPlot(d3_d15_integ, group.by = "PTID",
                      pt.size = 0.005)+
   guides(x = axis, y = axis) +
@@ -600,6 +602,7 @@ umap_ptid <- DimPlot(d3_d15_integ, group.by = "PTID",
   scale_y_discrete("UMAP2")
 umap_ptid
 
+# Do cells separate by ARM in UMAP space?
 umap_arm <- DimPlot(d3_d15_integ, group.by = "ARM",
                      pt.size = 0.005)+
   guides(x = axis, y = axis) +
@@ -614,7 +617,7 @@ umap_arm <- DimPlot(d3_d15_integ, group.by = "ARM",
   scale_y_discrete("UMAP2")
 umap_arm
 
-
+# Color UMAP by high-level annotations
 all_umap <- DimPlot(d3_d15_integ,
                     pt.size = 0.005) +
   guides(x = axis, y = axis) +
@@ -719,7 +722,7 @@ imm_combined <- RunPCA(imm_combined, verbose = FALSE)
 imm_integ <- RunHarmony(imm_combined, "orig.ident")
 imm_integ <- RunUMAP(imm_integ, reduction = "harmony", dims = 1:20)
 
-# How much overlap is there?
+# Do cells seprate in UMAP space by timepoint, PTID, SEX, ARM, or AGE?
 # DimPlot(imm_integ, group.by = "orig.ident")
 # DimPlot(imm_integ, group.by = "PTID")
 # DimPlot(imm_integ, group.by = "SEX")

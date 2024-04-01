@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Intro
 
-The goal is to tie this data together with findings from some of the other datasets:
+The goal is to tie this data together with findings from some of the other datasets in this study:
 
 * Blood bulk rna-seq
 * Skin CyTOF
@@ -54,7 +54,6 @@ Define new annotations to match CyTOF cell types as best we can. I don't think I
 ```{r}
 # Make CyTOF-related annotations that include non-immune cells
 
-# For now don't worry about cytotoxic T cells (how would I define those?)
 tcells <- c("CD8 TEM", "CD4 TEM", "dnT", "Treg", "CD8 Naive", "gdT",
             "CD4 Proliferating", "CD8 Proliferating")
 mait <- c("MAIT")

@@ -45,12 +45,11 @@ if(!dir.exists(file.path(script_output_dir))) {
 Load data into Seurat objects
 
 ```{r, message=FALSE}
-# Linux
 day3_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/20230323_Day3_aggr/outs/count/filtered_feature_bc_matrix.h5"
 day15_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/20230207_Day15/per_sample_outs/20230203_Seshadri_UW/count/sample_filtered_feature_bc_matrix.h5"
 ```
 
-Make objects
+Make Seurat objects
 
 ```{r, message=FALSE}
 make_seurat_obj <- function(infile, projectname) {
@@ -83,7 +82,7 @@ d3_start_count <- length(day3$orig.ident)
 d15_start_count <- length(day15$orig.ident)
 ```
 
-Raw HTO counts for each day
+Raw hashtag oligo counts for each day
 
 ```{r}
 rowSums(day3$HTO) %>%
@@ -95,14 +94,14 @@ rowSums(day15$HTO) %>%
   kable(align = "l", caption = "Day 15")
 ```
 
-Normalize data
+Normalize data. Use centered log-ratio (CLR) transformation as reccommended by Huemos et. al, (Nat Rev Genet, 2023)
 
 ```{r}
 day3_norm <- NormalizeData(day3, assay = "HTO", normalization.method = "CLR", margin = 2)
 day15_norm <- NormalizeData(day15, assay = "HTO", normalization.method = "CLR", margin = 2)
 ```
 
-HTO distributions for each day
+Hashtag oligo distributions for each day
 
 ```{r}
 hto_distr <- function(inobj) {
@@ -139,6 +138,8 @@ d15_hto + ggtitle("Day 15")
 ```
 
 # Demultiplex
+
+Demultiplex hashtagged samples using hashtag oligo expression.
 
 ```{r, message=FALSE}
 demux_multiseq <- function(norm_obj) {
@@ -177,16 +178,14 @@ day15_dm@meta.data$MULTI_ID <- factor(day15_dm@meta.data$MULTI_ID,
 
 **Day 3**
 
-Missing hashtags:
-
-* Hashtag 7 (ptid 12) - why?
+Note that Hashtag 7 (PTID 12) is missing. Likely due to sample quality.
 
 ```{r}
 table(day3_dm$MULTI_ID_global)
 table(day3_dm$MULTI_ID)
 ```
 
-Ridge plot using MULTI_ID
+Ridge plot using MULTI_ID. Ideally, cells labelled with a given hashtag will only have a high level of expression for that hashtag.
 
 ```{r, fig.height=12, fig.width=8, message=FALSE}
 Idents(day3_dm) <- "MULTI_ID"
@@ -197,19 +196,19 @@ RidgePlot(day3_dm, assay = "HTO", ncol = 3,
 
 **Day 15**
 
-Missing hashtags:
+These hashtags are missing, either because the sample wasn't collected or due to low sample quality:
 
-* Hashtag 2 (ptid 5) - Expected
-* Hashtag 3 (ptid 7) - why?
-* Hashtag 4 (ptid 8) - why?
-* Hashtag 8 (ptid 12) - Expected
+* Hashtag 2 (PTID 5) - Expected
+* Hashtag 3 (PTID 7) - Low quality
+* Hashtag 4 (PTID 8) - Low quality
+* Hashtag 8 (PTID 12) - Expected
 
 ```{r}
 table(day15_dm$MULTI_ID_global)
 table(day15_dm$MULTI_ID)
 ```
 
-Ridge plot using MULTI_ID
+Ridge plot using MULTI_ID. Ideally, cells labelled with a given hashtag will only have a high level of expression for that hashtag.
 
 ```{r, fig.height=12, fig.width=8, message=FALSE}
 Idents(day15_dm) <- "MULTI_ID"
@@ -218,7 +217,7 @@ RidgePlot(day15_dm, assay = "HTO", ncol = 3,
                        "Hashtag6", "Hashtag7", "Hashtag9", "Hashtag10"))
 ```
 
-# Label by HTO
+# Label by hashtag oligo
 
 ```{r}
 label <- function(dm) {
@@ -309,6 +308,8 @@ saveRDS(day15_labelled, file = file.path(script_output_dir, "processed_data/1_dm
 ```
 
 # QC
+
+These QC plots are inspired by the Suerat "PBMC 3k guided tutorial" (version October 31, 2023).
 
 ## ncount RNA (singlets, doublets, negative)
 

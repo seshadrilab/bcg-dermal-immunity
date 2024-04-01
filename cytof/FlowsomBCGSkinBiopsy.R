@@ -21,11 +21,11 @@ library(ggbeeswarm)
 outdir <- file.path(here::here(), "output")
 
 # Create folders for data if needed
-if(!dir.exists(file.path(script_output_dir))) {
-  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "processed_data")))
-  dir.create(file.path(script_output_dir, "processed_data"), recursive = T)
-  cat(sprintf("Creating folder %s\n", file.path(script_output_dir, "plots")))
-  dir.create(file.path(script_output_dir, "plots"), recursive = T)
+if(!dir.exists(file.path(outdir))) {
+  cat(sprintf("Creating folder %s\n", file.path(outdir, "processed_data")))
+  dir.create(file.path(outdir, "processed_data"), recursive = T)
+  cat(sprintf("Creating folder %s\n", file.path(outdir, "plots")))
+  dir.create(file.path(outdir, "plots"), recursive = T)
 }
 
 # Load fcs files (n=10 at Day 3, n=8 at Day 15)
@@ -41,7 +41,7 @@ merging_table1 <- read_excel("/home/emmabishop/workspace/human-bcg-challenge-cyt
 # Create flowSet object
 fs <- read.flowSet(fcs, transformation = FALSE, truncate_max_range = FALSE)
 
-# Check that all panel columns are in the flowSet object
+# Check that all the metal tags in our CyTOF panel (e.g. Cd116Di) appear in the flowSet object
 all(panel$fcs_colname %in% colnames(fs)) # TRUE
 
 # Specify levels for ordering
@@ -49,7 +49,7 @@ md$timepoint <- factor(md$timepoint, levels = c("Day_3", "Day_15"))
 md$sample_id <- factor(md$sample_id, levels = md$sample_id[order(md$timepoint)])
 
 # Create SingleCellExperiment object
-# By default, this arcsinh transformers marker expresssions with a cofactor of 5.
+# By default, this arcsinh transforms marker expressions with a co-factor of 5.
 sce <- prepData(fs, panel, md, features = panel$fcs_colname,
                 panel_cols = list(channel = "fcs_colname", antigen = "antigen"),
                 md_cols = list(file = "fcs_name", id = "sample_id", 
@@ -93,7 +93,7 @@ ggsave(file.path(outdir, "plots/SuppFig3_cellcount_bar.png"), plot = cellcount_b
 cairo_pdf(file = file.path(outdir, "plots/SuppFig3_cellcount_bar.pdf"), 
           width = 5, height = 3, bg = "transparent", family = "Arial")
 print(cellcount_bar)
-dev.off()
+dev.off()  # Close file
 
 # Non-redundancy scores (NRS) across samples for all markers
 nrs_boxplot <- plotNRS(sce, color_by = "timepoint") +
@@ -232,7 +232,7 @@ FDR_cutoff <- 0.05
 plotAbundances(sce, k = "Annotations", by = "cluster_id", 
                       shape_by = "group", group_by = "timepoint")
 
-# Calculate proportions with diffcyt
+# Calculate proportion of CD45+ cells for each cell type with diffcyt
 ei <- metadata(sce)$experiment_info
 da_formula1 <- createFormula(ei, 
                               cols_fixed = "timepoint", 
@@ -251,7 +251,7 @@ da_res2 <- diffcyt(sce,
                    analysis_type = "DA", method_DA = "diffcyt-DA-GLMM",
                    clustering_to_use = "Annotations", verbose = FALSE)
 
-# Take a detailed look
+# Take a detailed look at diffcyte output
 # names(da_res1)
 # rowData(da_res1$res) 
 # table(rowData(da_res1$res)$p_adj < FDR_cutoff)
@@ -260,7 +260,7 @@ da_res2 <- diffcyt(sce,
 table <- topTable(da_res2, show_props = TRUE, format_vals = TRUE, digits = 2) %>%
   as.data.frame()
 
-# Reformat for use by other scripts
+# Reformat for use by other scripts (e.g. ManuscriptPlots.R)
 table_out <- table %>%
   select(-c(p_val, p_adj)) %>%
   # Transpose
@@ -295,6 +295,7 @@ all_count <- table_out %>%
 clusters <- levels(all_count$cluster)
 clusters
 
+# Make line plots showing how cell type proportions change over time
 make_mag_plots <- function(count_df, current_cluster, adjust_p) {
   count_df <- count_df %>%
     dplyr::filter(cluster == current_cluster)

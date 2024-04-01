@@ -510,7 +510,7 @@ DimPlot(day15_sub_annot, group.by = "predicted.celltype.l2", label = TRUE, repel
 
 ## Consolidate Clusters
 
-To compare with Jolie's data and make things tidier.
+To compare with cell types in the CyTOF data.
 
 ```{r}
 consol_azi <- function(in_obj) {
@@ -642,7 +642,7 @@ subtype_cols <- c(
   "HSPC" = "saddlebrown")
 ```
 
-Visualize
+Visualize updated immune cell types in UMAP space.
 
 ```{r}
 d3_sub_plt <- DimPlot(d3_subset, group.by = "eb_idents", pt.size = 0.4,

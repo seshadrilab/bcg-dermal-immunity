@@ -85,8 +85,6 @@ Our cutoffs:
 * feature counts > 200
 * mitochondrial counts < 10%
 
-**Note that for Jim Kublin's talk in the spring we used < 5% mitochondrial counts**
-
 ```{r, message=FALSE}
 # Day 3
 day3 <- subset(day3_singlets, subset = nFeature_RNA > 200)
@@ -469,7 +467,7 @@ p1
 
 ### Violin plots
 
-Key markers:
+Key markers for each cell type, as collected from the literature:
 
 * Lymphoid: IL7R
 * Myeloid: LYZ
@@ -630,7 +628,7 @@ p11
 
 ### Violin plots
 
-Key markers:
+Key markers for each cell type, as collected from the literature:
 
 * Lymphoid: IL7R
 * Myeloid: LYZ

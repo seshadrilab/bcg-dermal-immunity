@@ -40,7 +40,7 @@ DefaultAssay(day15) <- "ADT"
 
 # Normalize and gate
 
-Gate cells by setting a cutoff expression level for each IgG isotype. 
+Gate cells by setting a cutoff expression level for each IgG isotype control.
 
 First, normalize ADT data.
 
@@ -235,6 +235,8 @@ saveRDS(day15, file = file.path(script_output_dir,
 ```
 
 # Visualize expression of 'working' ADTs
+
+Based on visual judgement of plots above.
 
 ## Day 3
 
