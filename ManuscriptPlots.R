@@ -30,7 +30,7 @@ if(!dir.exists(file.path(script_output_dir))) {
 outdir <- file.path(here::here(), "output/plots")
 
 # Heatmap data from Andrew Fiore-Gartland
-heat_dat <- read_csv("~/Downloads/deg_heatmap_values.csv")
+heat_dat <- read_csv("/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/deg_heatmap_values.csv")
 
 # All cells
 day3_clstr_filt <- readRDS(file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
@@ -41,7 +41,8 @@ d3_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_fi
 d15_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
 
 # Micro data
-micro_f <- "~/Downloads/Copy of Combined CFU MVT RS data.xlsx"
+# micro_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/Copy of Combined CFU MVT RS data.xlsx"
+micro_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/Combined CFU MVT RS data KER.xlsx"
 
 # CyTOF cell population frequencies
 all_full_count <- read_csv(file.path(script_output_dir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
@@ -53,9 +54,9 @@ ptid_colors <- c("BCG01" = "salmon", "BCG05" = "orange", "BCG07" = "#7570B3",
                  "BCG16" = "darkblue")
 
 ptid_colors2 <- c("1" = "salmon", "5" = "orange", "7" = "#7570B3",
-                 "8" = "#0CB702", "9" = "#A6761D", "10" = "#00BFC4",
-                 "11" = "#C77CFF", "12" = "#FF61CC", "13" = "darkgreen",
-                 "16" = "darkblue")
+                  "8" = "#0CB702", "9" = "#A6761D", "10" = "#00BFC4",
+                  "11" = "#C77CFF", "12" = "#FF61CC", "13" = "darkgreen",
+                  "16" = "darkblue")
 
 ############################
 ## Pre-process micro data ##
@@ -65,23 +66,23 @@ micro <- read_excel(micro_f,
                     sheet = 2,
                     skip = 3,
                     n_max = 9,
-                    na = c("ND", "NDT", 
-                           "Detectable pre-rRNA in Day-5 and -8 culture."),
+                    na = c("N/A", "Detectable pre-rRNA in Day-5 and -8 culture."),
                     col_names = c("Treatment", "PTID", "CFU_D3", 
                                   NA, NA, NA, NA, 
                                   "MVT_D3", NA, "RS_D3", "CFU_D15", 
                                   NA, NA, NA, NA, 
                                   "MVT_D15", NA, "RS_D15")) %>%
+  mutate(MVT_D3 = gsub("NDT", 0, MVT_D3),
+         MVT_D15 = gsub("NDT", 0, MVT_D15)) %>%
   select(Treatment, PTID, CFU_D3, MVT_D3, RS_D3, CFU_D15, MVT_D15, RS_D15) %>%
   pivot_longer(cols = -c(Treatment, PTID), 
                names_to = c(".value", "Day"), 
                names_pattern = "(\\w+)_(\\w+)") %>%
+  mutate(MVT = as.numeric(MVT)) %>%
   mutate(Day = str_replace_all(Day, c("D3"="Day 3", "D15"="Day 15"))) %>%
   mutate(Day = factor(Day, levels = c("Day 3", "Day 15")),
          Treatment = factor(Treatment, levels = c("Non-INH", "INH")))
 
-# Replace NAs with 0
-micro[is.na(micro)] <- 0
 
 # Prep data
 cfu_log <- micro %>%
@@ -98,7 +99,9 @@ cfu_log <- micro %>%
 
 micro2 <- micro %>%
   mutate(Day = gsub(" ", "_", Day)) %>%
-  unite("sample", PTID:Day, remove = F)
+  unite("sample", PTID:Day, remove = F) %>%
+  # Exclude RS data for this since only one PTID has RS data at both timepoints
+  select(-c(RS))
 head(micro2)
 
 cytof2 <- all_full_count %>%
@@ -114,15 +117,15 @@ head(micro_cytof)
 micro_cytof_wide <- pivot_wider(micro_cytof, 
                                 id_cols = patient_id, 
                                 names_from = timepoint, 
-                                values_from = `B cells`:RS)
+                                values_from = `B cells`:MVT)
 head(micro_cytof_wide)
 
-# Do subtraction
 wide_cols <- colnames(micro_cytof_wide)
 
 d15_colnames <- wide_cols[grepl("Day_15", wide_cols)]
 d3_colnames <- wide_cols[grepl("Day_3", wide_cols)]
 
+# Do subtraction
 changes <- micro_cytof_wide  %>%
   mutate(across(all_of(d15_colnames), .names = "Change_{.col}") - across(all_of(d3_colnames))) %>%
   dplyr::rename(PTID = patient_id) %>%
@@ -152,64 +155,8 @@ correlations %>%
   arrange(desc(abs(r)))
 
 # Test which with an abs R >=0.6 are significant
-cor.test(to_corr$Change_RS, to_corr$Change_Monocytes, method = "pearson")  # sig
-cor.test(to_corr$Change_RS, to_corr$Change_CD68_Macs, method = "pearson")  # sig
-cor.test(to_corr$Change_RS, to_corr$Change_Undefined, method = "pearson")  # sig
-cor.test(to_corr$Change_RS, to_corr$Change_MAIT_cells, method = "pearson")  # sig
-
 cor.test(to_corr$Change_MVT, to_corr$Change_Tcm, method = "pearson")  # NOT sig
-cor.test(to_corr$Change_RS, to_corr$Change_B_cells, method = "pearson")  # NOT sig
-
-# Plot the significant ones
-
-plot_micro_cytof_corr <- function(in_df, ycol, ylabel) {
-  out <- ggscatter(in_df, x = "Change_RS", y = ycol, add = "reg.line",
-                   add.params = list(size = 0.5)) +
-    geom_point(aes(fill = PTID), size = 2, shape = 21, cex = 3) +
-    scale_fill_manual(values = ptid_colors) +
-    stat_cor(method = "pearson", cor.coef.name = "R", size = 2.5, p.accuracy = 0.001) +
-    xlab(expression(Delta~` R:S ratio`)) +
-    ylab(ylabel) +
-    theme_classic() +
-    theme(text = element_text(family="Arial"),
-          axis.title.x = element_text(size = 8),
-          axis.title.y = element_text(size = 8),
-          axis.text.x = element_text(color="black", size=9),
-          axis.text.y = element_text(color="black", size=9),
-          legend.position = "none")
-  return(out)
-}
-
-rs_mono <- plot_micro_cytof_corr(changes, "Change_Monocytes", expression(Delta~` Monocyte Frequency`))
-rs_mono
-
-rs_mac <- plot_micro_cytof_corr(changes, "Change_CD68_Macs", expression(Delta~` CD68+ Mac Frequency`))
-rs_mac
-
-rs_undef <- plot_micro_cytof_corr(changes, "Change_Undefined", expression(Delta~` Undefined Frequency`))
-rs_undef
-
-rs_mait <- plot_micro_cytof_corr(changes, "Change_MAIT_cells", expression(Delta~` MAIT Frequency`))
-rs_mait
-
-
-## Save plots ##
-save_plt <- function(obj, pltname) {
-  ggsave(file.path(outdir, paste0(pltname, ".png")), plot = obj,
-         dpi = 300, width = 2, height = 1.62, device = "png")
-  
-  cairo_pdf(file = file.path(outdir, paste0(pltname, ".pdf")), 
-            width = 2, height = 1.62, bg = "transparent", family = "Arial")
-  print(obj)
-  dev.off()
-
-}
-
-save_plt(rs_mono, "Fig4_correlation_rs_mono")
-save_plt(rs_mac, "Fig4_correlation_rs_mac")
-save_plt(rs_undef, "Fig4_correlation_rs_undef")
-save_plt(rs_mait, "Fig4_correlation_rs_mait")
-
+cor.test(to_corr$Change_MVT, to_corr$Change_CD11c_T_cells, method = "pearson")  # NOT sig
 
 ###############################
 ## CFU (on solid 7H10 media) ##
