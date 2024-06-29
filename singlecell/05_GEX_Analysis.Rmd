@@ -593,8 +593,8 @@ Idents(day3_sub) <- "cytof_annot"
 Idents(day15_sub) <- "cytof_annot"
 
 # Re-level object@ident
-pop_levels_d3 <- c("T cells", "MAIT cells", "Tcm", "B cells", "Lymphoid other", "Monocytes", "Myeloid other")
-pop_levels_d15 <- c("T cells", "MAIT cells", "Tcm", "B cells", "Lymphoid other", "Monocytes", "Myeloid other", "Granulocytes")
+pop_levels_d3 <- c("Monocytes", "Myeloid other", "B cells", "T cells", "Lymphoid other", "Tcm", "MAIT cells")
+pop_levels_d15 <- c("Monocytes", "Myeloid other", "B cells", "T cells", "Lymphoid other", "Tcm", "MAIT cells", "Granulocytes")
 
 day3_sub@active.ident <- factor(x = day3_sub@active.ident, levels = pop_levels_d3)
 day15_sub@active.ident <- factor(x = day15_sub@active.ident, levels = pop_levels_d15)
@@ -642,6 +642,184 @@ day15_sub_t <- AddModuleScore(object = day15_sub, features = modules,
                              search = T, nbin = 18,
                              name = "Module")  
 ```
+
+
+Do a two-sided Wilcoxon rank-sum test on every possible combination of cell types, followed by Bonferroni correction and filtering results by those with adjusted p-value < 0.0001.
+
+```{r}
+# Module1
+test_combos_mod1 <- function(celltypes, obj) {
+  combos <- combn(celltypes, 2, simplify = FALSE)  # Get unique pairs of cell types
+  
+  big_df <- NULL
+  for (combo in combos) {
+    testdat <- obj@meta.data %>% filter(cytof_annot %in% combo)
+    wilcox_p <- wilcox.test(Module1 ~ cytof_annot, 
+                               data = testdat,
+                               alternative = c("two.sided"),
+                               exact = FALSE)$p.value
+    temp_df <- data.frame(combo = paste(combo, collapse = "_"), 
+                          padj = p.adjust(wilcox_p, method = "bonferroni"))
+    big_df <- bind_rows(big_df, temp_df)
+  }
+  out <- big_df %>%
+    filter(padj < 0.0001)
+  return(out)
+}
+
+d3_mod1 <- test_combos_mod1(pop_levels_d3, day3_sub_t)
+d15_mod1 <- test_combos_mod1(pop_levels_d15, day15_sub_t)
+
+
+# Module 2
+test_combos_mod2 <- function(celltypes, obj) {
+  combos <- combn(celltypes, 2, simplify = FALSE)  # Get unique pairs of cell types
+  
+  big_df <- NULL
+  for (combo in combos) {
+    testdat <- obj@meta.data %>% filter(cytof_annot %in% combo)
+    wilcox_p <- wilcox.test(Module2 ~ cytof_annot, 
+                               data = testdat,
+                               alternative = c("two.sided"),
+                               exact = FALSE)$p.value
+    temp_df <- data.frame(combo = paste(combo, collapse = "_"), 
+                          padj = p.adjust(wilcox_p, method = "bonferroni"))
+    big_df <- bind_rows(big_df, temp_df)
+  }
+  out <- big_df %>%
+    filter(padj < 0.0001)
+  return(out)
+}
+
+d3_mod2 <- test_combos_mod2(pop_levels_d3, day3_sub_t)
+d15_mod2 <- test_combos_mod2(pop_levels_d15, day15_sub_t)
+```
+
+
+
+
+
+
+```{r}
+# TEST
+
+# Generate all unique pairs of cell types
+combinations <- combn(pop_levels_d3, 2, simplify = FALSE)
+
+pval_list_mod1_d3 <- NULL
+
+for (c in combinations) {
+  testdat <- day3_sub_t@meta.data %>%
+    filter(cytof_annot %in% c)
+
+  wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat,
+                   alternative = c("two.sided"),
+                   exact = FALSE)$p.value
+  
+  temp_df <- data.frame(combo = paste(c, collapse = "_"), pval = p.adjust(wilcox_test, method = "BH"))
+  
+  pval_list_mod1_d3 <- bind_rows(pval_list_mod1_d3, temp_df)
+}
+
+# Which are significant by the strict 
+pval_list_mod1_d3 %>%
+  filter(pval < 0.0001)
+
+
+##############################
+
+
+
+# Display the list of combinations
+print(combinations)
+
+
+# TEST
+
+# Neutrophil Day 3
+VlnPlot(day3_sub_t, "Module1", pt.size = 0.1, cols = pop_colors) + 
+  NoLegend() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 9),
+        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
+  ggtitle("Neutrophils (I, II)")
+
+
+# Use two-sided Wilcoxon rank-sum tests followed by Bonferroni correction
+# Test every combo of cell populations
+# ****adj. p-value < 0.0001
+
+
+testdat2 <- testdat %>%
+  filter(cytof_annot %in% c("T cells", "MAIT cells"))
+
+wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat2,
+                   alternative = c("two.sided"),
+                   exact = FALSE)
+
+p.adjust(wilcox_test$p.value, method = "BH")
+
+
+```
+
+
+
+
+```{r}
+# TEST
+
+testdat <- day3_sub_t@meta.data %>%
+  group_by(orig.ident, PTID, cytof_annot) %>%
+  mutate(mod1_means = mean(Module1)) %>%
+  ungroup() %>%
+  select(orig.ident, PTID, cytof_annot, mod1_means, Module1) %>%
+  distinct()
+
+# Neutrophil Day 3
+ggboxplot(testdat, x = "cytof_annot", y = "Module1", 
+          color = "cytof_annot", palette = pop_colors,
+          ylab = "mod1_means", xlab = "cytof_annot")
+
+
+
+testdat2 <- testdat %>%
+  filter(cytof_annot %in% c("T cells", "MAIT cells"))
+
+wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat2,
+                   alternative = c("two.sided"),
+                   exact = FALSE)
+
+p.adjust(wilcox_test$p.value, method = "BH")
+
+
+
+****adj. p-value < 0.0001
+
+
+# Idents(day3_sub_t) <- "cytof_annot"
+# Idents(day15_sub_t) <- "cytof_annot"
+
+# Neutrophil Day 3
+VlnPlot(day3_sub_t, "Module1", pt.size = 0.1, cols = pop_colors) + 
+  NoLegend() +
+  ylim(-0.17, 0.52) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 9),
+        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
+  ggtitle("Neutrophils (I, II)")
+
+```
+
+
+
+
+
+
+
+
+
 
 Combine and save
 
