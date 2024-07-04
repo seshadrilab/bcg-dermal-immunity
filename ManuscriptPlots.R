@@ -30,7 +30,7 @@ if(!dir.exists(file.path(script_output_dir))) {
 outdir <- file.path(here::here(), "output/plots")
 
 # Heatmap data from Andrew Fiore-Gartland
-heat_dat <- read_csv("/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/deg_heatmap_values.csv")
+heat_dat <- read_csv("/media/emmabishop/5TBSharedStorage/aws_bam_fastq/2022_BCGChallenge/Round1/deg_heatmap_values.csv")
 
 # All cells
 day3_clstr_filt <- readRDS(file.path(script_output_dir, "processed_data/9_final_annot_d3.rds"))
@@ -42,7 +42,7 @@ d15_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_f
 
 # Micro data
 # micro_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/Copy of Combined CFU MVT RS data.xlsx"
-micro_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/Combined CFU MVT RS data KER.xlsx"
+micro_f <- "/media/emmabishop/5TBSharedStorage/aws_bam_fastq/Combined CFU MVT RS data KER.xlsx"
 
 # CyTOF cell population frequencies
 all_full_count <- read_csv(file.path(script_output_dir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
