@@ -32,6 +32,7 @@ library(CellChat)
 library(svglite)
 library(ggpubr)
 library(cowplot)
+library(rstatix)
 
 set.seed(4)
 
@@ -589,24 +590,12 @@ norm_and_reduce <- function(dm_singlets) {
 day3_sub <- norm_and_reduce(day3_sub)
 day15_sub <- norm_and_reduce(day15_sub)
 
-Idents(day3_sub) <- "cytof_annot"
-Idents(day15_sub) <- "cytof_annot"
-
-# Re-level object@ident
-pop_levels_d3 <- c("Monocytes", "Myeloid other", "B cells", "T cells", "Lymphoid other", "Tcm", "MAIT cells")
-pop_levels_d15 <- c("Monocytes", "Myeloid other", "B cells", "T cells", "Lymphoid other", "Tcm", "MAIT cells", "Granulocytes")
-
-day3_sub@active.ident <- factor(x = day3_sub@active.ident, levels = pop_levels_d3)
-day15_sub@active.ident <- factor(x = day15_sub@active.ident, levels = pop_levels_d15)
-
 # Define colors
 pop_colors <- c("Lymphoid other" = "#00A9FF", "T cells"= "#00BFC4", "MAIT cells" = "cyan",
                   "Tcm" = "#8ab8fe", "B cells" = "blue",
                   "Myeloid other" = "#F8766D", "Monocytes" = "#cb416b",
                   "Granulocytes" = "#f8481c")
 ```
-
-## Violin plots of module score
 
 ```{r}
 # Gene modules to highlight
@@ -631,247 +620,314 @@ enriched_mono <- unique(c('TNFSF13','MYCL1','EPB41L3','DPYSL2','RTN1','SLC31A2',
 modules <- list(enriched_neutr, enriched_mono)
 ```
 
+## Violin plots of module score (cytof_annot)
+
+Add module scores
+
+```{r}
+Idents(day3_sub) <- "cytof_annot"
+Idents(day15_sub) <- "cytof_annot"
+
+day3_sub_t <- AddModuleScore(object = day3_sub, features = modules,
+                             search = T, nbin = 18,
+                             name = "Module")
+
+day15_sub_t <- AddModuleScore(object = day15_sub, features = modules,
+                             search = T, nbin = 18,
+                             name = "Module")
+```
+
+Extract cell types and module scores
+
+```{r}
+d3 <- day3_sub_t@meta.data %>%
+  select(orig.ident, cytof_annot, Module1, Module2)
+
+d15 <- day15_sub_t@meta.data %>%
+  select(orig.ident, cytof_annot, Module1, Module2)
+```
+
+Set cell types as factors
+
+```{r}
+d3 <- d3 %>%
+  mutate(cytof_annot = factor(cytof_annot,
+                              levels = c("Monocytes", "Myeloid other", "T cells",
+                                         "Tcm", "MAIT cells", "B cells",
+                                         "Lymphoid other")),
+         orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
+
+d15 <- d15 %>%
+  mutate(cytof_annot = factor(cytof_annot,
+                              levels = c("Monocytes", "Myeloid other", "T cells",
+                                         "Tcm", "MAIT cells", "B cells",
+                                         "Lymphoid other", "Granulocytes")),
+         orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
+```
+
+Do a two-sided Wilcoxon rank-sum test on every possible combination of cell types, followed by Bonferroni correction.
+
+```{r}
+# Get lists of pairs of cell types to compare in wilcox test
+combos_d3 <- combn(unique(d3$cytof_annot), 2, simplify = FALSE)
+combos_d15 <- combn(unique(d15$cytof_annot), 2, simplify = FALSE)
+
+do_wilcox_mod1_combo <- function(df, combos) {
+  out <- wilcox_test(df, Module1 ~ cytof_annot, 
+            comparisons = combos,
+            p.adjust.method = "bonferroni",
+            exact = FALSE,
+            alternative = "two.sided") %>%
+    arrange(group1, p.adj) %>%
+    add_x_position() %>%
+    mutate(bracket_len = xmin - xmax) %>%
+    arrange(group1, bracket_len) %>%
+    add_xy_position(x = "cytof_annot", step.increase = 0.2) %>%
+    filter(p.adj.signif != "ns")
+  return(out)
+}
+
+do_wilcox_mod2_combo <- function(df, combos) {
+  out <- wilcox_test(df, Module2 ~ cytof_annot, 
+            comparisons = combos,
+            p.adjust.method = "bonferroni",
+            exact = FALSE,
+            alternative = "two.sided") %>%
+    arrange(group1, p.adj) %>%
+    add_x_position() %>%
+    mutate(bracket_len = xmin - xmax) %>%
+    arrange(group1, bracket_len) %>%
+    add_xy_position(x = "cytof_annot", step.increase = 0.2) %>%
+    filter(p.adj.signif != "ns")
+  return(out)
+}
+
+
+mod1_d3 <- do_wilcox_mod1_combo(d3, combos_d3) %>%
+  mutate(y.position = y.position - 0.08) %>%
+  mutate(y.position = case_when(
+    statistic == 475083 ~ 0.57,
+    .default = y.position
+  ))
+
+mod1_d15 <- do_wilcox_mod1_combo(d15, combos_d15) %>%
+  mutate(y.position = y.position - 0.28) %>%
+  mutate(y.position = case_when(
+    statistic %in% c(1672, 24625, 6336) ~ y.position - 0.16,
+    .default = y.position
+  ))
+
+mod2_d3 <- do_wilcox_mod2_combo(d3, combos_d3) %>%
+  mutate(y.position = y.position - 0.15)
+
+mod2_d15 <- do_wilcox_mod2_combo(d15, combos_d15) %>%
+  mutate(y.position = y.position - 0.25) %>%
+  mutate(y.position = case_when(
+    statistic %in% c(979, 35477) ~ y.position - 0.45,
+    .default = y.position
+  ))
+```
+
+Plot
+
+```{r}
+# Module 1
+mod1_d3_plt <- ggplot(d3, 
+                   aes(x = cytof_annot, y = Module1)) + 
+  geom_violin() +
+  theme_classic() +
+  ylab("Enriched in Neutrophils (I, II)\nn=66, Module Score") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(color="black", size = 9),
+        axis.text.y = element_text(color="black", size = 9),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        legend.position="none") +
+  ggtitle("Day 3") +
+  stat_pvalue_manual(mod1_d3,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod1_d3_plt
+
+
+mod1_d15_plt <- ggplot(d15, 
+                   aes(x = cytof_annot, y = Module1)) + 
+  geom_violin(fill = "gray50") +
+  theme_classic() +
+  ylab("Enriched in Neutrophils (I, II)\nn=66, Module Score") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(color="black", size = 9),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        legend.position="none") +
+  ggtitle("Day 15") +
+  stat_pvalue_manual(mod1_d15,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod1_d15_plt
+
+
+# Module 2
+mod2_d3_plt <- ggplot(d3, 
+                   aes(x = cytof_annot, y = Module2)) + 
+  geom_violin() +
+  theme_classic() +
+  ylab("Enriched in Monocytes (II, IV)\nn=67, Module Score") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(color="black", size = 9),
+        axis.text.y = element_text(color="black", size = 9),
+        axis.text.x = element_text(color="black", size = 9, 
+                                   angle = 45, vjust = 1, hjust = 1),
+        legend.position="none") +
+  stat_pvalue_manual(mod2_d3,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod2_d3_plt
+
+
+mod2_d15_plt <- ggplot(d15, 
+                   aes(x = cytof_annot, y = Module2)) + 
+  geom_violin(fill = "gray50") +
+  theme_classic() +
+  ylab("Enriched in Monocytes (II, IV)\nn=67, Module Score") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(color="black", size = 9),
+        axis.text.x = element_text(color="black", size = 9, 
+                                   angle = 45, vjust = 1, hjust = 1),
+        legend.position="none") +
+  stat_pvalue_manual(mod2_d15,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod2_d15_plt
+
+
+all_mod_plt <- (mod1_d3_plt + mod1_d15_plt) / (mod2_d3_plt + mod2_d15_plt)
+all_mod_plt
+
+ggsave(file.path("~/Desktop/test2.png"), 
+       plot = all_mod_plt,
+       dpi = 300, width = 6, height = 6, device = "png")
+```
+
+
+## Violin plots of module score (eb_atlas_idents)
+
+Consider using this plot for revised Figure 5D.
+
 Add module scores
 
 ```{r}
 day3_sub_t <- AddModuleScore(object = day3_sub, features = modules,
                              search = T, nbin = 18,
-                             name = "Module")  
+                             name = "Module")
 
 day15_sub_t <- AddModuleScore(object = day15_sub, features = modules,
-                             search = T, nbin = 18,
-                             name = "Module")  
+                              search = T, nbin = 18,
+                              name = "Module")
 ```
 
-
-Do a two-sided Wilcoxon rank-sum test on every possible combination of cell types, followed by Bonferroni correction and filtering results by those with adjusted p-value < 0.0001.
+Extract cell types and module scores
 
 ```{r}
-# Module1
-test_combos_mod1 <- function(celltypes, obj) {
-  combos <- combn(celltypes, 2, simplify = FALSE)  # Get unique pairs of cell types
-  
-  big_df <- NULL
-  for (combo in combos) {
-    testdat <- obj@meta.data %>% filter(cytof_annot %in% combo)
-    wilcox_p <- wilcox.test(Module1 ~ cytof_annot, 
-                               data = testdat,
-                               alternative = c("two.sided"),
-                               exact = FALSE)$p.value
-    temp_df <- data.frame(combo = paste(combo, collapse = "_"), 
-                          padj = p.adjust(wilcox_p, method = "bonferroni"))
-    big_df <- bind_rows(big_df, temp_df)
-  }
-  out <- big_df %>%
-    filter(padj < 0.0001)
+d3 <- day3_sub_t@meta.data %>%
+  select(orig.ident, eb_atlas_idents, Module1, Module2)
+
+d15 <- day15_sub_t@meta.data %>%
+  select(orig.ident, eb_atlas_idents, Module1, Module2)
+```
+
+Set cell types as factors
+
+```{r}
+mod_dat <- d3 %>%
+  bind_rows(d15) %>%
+  mutate(eb_atlas_idents = factor(eb_atlas_idents, levels = c("Myeloid", "Lymphoid")),
+         orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
+```
+
+Do a two-sided Wilcoxon rank-sum test on every possible combination of cell types, followed by Bonferroni correction.
+
+```{r}
+do_wilcox_mod1 <- function(df) {
+  out <- df %>%
+    group_by(orig.ident) %>%
+    wilcox_test(Module1 ~ eb_atlas_idents,
+            p.adjust.method = "bonferroni",
+            exact = FALSE,
+            alternative = "two.sided") %>%
+    add_significance() %>%
+    add_xy_position(x = "eb_atlas_idents")
   return(out)
 }
 
-d3_mod1 <- test_combos_mod1(pop_levels_d3, day3_sub_t)
-d15_mod1 <- test_combos_mod1(pop_levels_d15, day15_sub_t)
+do_wilcox_mod2 <- function(df) {
+  out <- df %>%
+    group_by(orig.ident) %>%
+    wilcox_test(Module2 ~ eb_atlas_idents,
+            p.adjust.method = "bonferroni",
+            exact = FALSE,
+            alternative = "two.sided") %>%
+    add_significance() %>%
+    add_xy_position(x = "eb_atlas_idents")
+  return(out)
+}
+
+# Run tests
+mod1 <- do_wilcox_mod1(mod_dat)
+mod2 <- do_wilcox_mod2(mod_dat)
+```
+
+Plot
+
+```{r}
+# Module 1
+mod1_plt <- ggplot(mod_dat, aes(x = eb_atlas_idents, y = Module1, fill = orig.ident)) +
+  geom_violin() +
+  scale_fill_manual(values = c("Day3" = 'white', "Day15" = 'gray50')) +
+  theme_classic() +
+  ylab("Enriched in Neutrophils (I, II)\nn=66, Module Score") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(color="black", size = 9.5),
+        axis.text.y = element_text(color="black", size = 9.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position="none") +
+  facet_grid(. ~ orig.ident) +
+  stat_pvalue_manual(mod1,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod1_plt
 
 
 # Module 2
-test_combos_mod2 <- function(celltypes, obj) {
-  combos <- combn(celltypes, 2, simplify = FALSE)  # Get unique pairs of cell types
-  
-  big_df <- NULL
-  for (combo in combos) {
-    testdat <- obj@meta.data %>% filter(cytof_annot %in% combo)
-    wilcox_p <- wilcox.test(Module2 ~ cytof_annot, 
-                               data = testdat,
-                               alternative = c("two.sided"),
-                               exact = FALSE)$p.value
-    temp_df <- data.frame(combo = paste(combo, collapse = "_"), 
-                          padj = p.adjust(wilcox_p, method = "bonferroni"))
-    big_df <- bind_rows(big_df, temp_df)
-  }
-  out <- big_df %>%
-    filter(padj < 0.0001)
-  return(out)
-}
-
-d3_mod2 <- test_combos_mod2(pop_levels_d3, day3_sub_t)
-d15_mod2 <- test_combos_mod2(pop_levels_d15, day15_sub_t)
-```
-
-
-
-
-
-
-```{r}
-# TEST
-
-# Generate all unique pairs of cell types
-combinations <- combn(pop_levels_d3, 2, simplify = FALSE)
-
-pval_list_mod1_d3 <- NULL
-
-for (c in combinations) {
-  testdat <- day3_sub_t@meta.data %>%
-    filter(cytof_annot %in% c)
-
-  wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat,
-                   alternative = c("two.sided"),
-                   exact = FALSE)$p.value
-  
-  temp_df <- data.frame(combo = paste(c, collapse = "_"), pval = p.adjust(wilcox_test, method = "BH"))
-  
-  pval_list_mod1_d3 <- bind_rows(pval_list_mod1_d3, temp_df)
-}
-
-# Which are significant by the strict 
-pval_list_mod1_d3 %>%
-  filter(pval < 0.0001)
-
-
-##############################
-
-
-
-# Display the list of combinations
-print(combinations)
-
-
-# TEST
-
-# Neutrophil Day 3
-VlnPlot(day3_sub_t, "Module1", pt.size = 0.1, cols = pop_colors) + 
-  NoLegend() +
+mod2_plt <- ggplot(mod_dat, aes(x = eb_atlas_idents, y = Module2, fill = orig.ident)) +
+  geom_violin() +
+  scale_fill_manual(values = c("Day3" = 'white', "Day15" = 'gray50')) +
+  theme_classic() +
+  ylab("Enriched in Monocytes (II, IV)\nn=67, Module Score") +
   theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 9),
-        axis.text.y = element_text(size = 9),
-        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
-  ggtitle("Neutrophils (I, II)")
+        axis.title.y = element_text(color="black", size = 9.5),
+        axis.text.y = element_text(color="black", size = 9.5),
+        axis.text.x = element_text(color="black", size = 9.5),
+        legend.position="none",
+        strip.text = element_blank(),
+        strip.background = element_blank()) +
+  facet_grid(. ~ orig.ident) +
+  stat_pvalue_manual(mod2,
+                     label.size = 3.5, bracket.size = 0.2, tip.length = 0)
+mod2_plt
 
+# Put together
+all_mod_plt <- mod1_plt / mod2_plt
+all_mod_plt
 
-# Use two-sided Wilcoxon rank-sum tests followed by Bonferroni correction
-# Test every combo of cell populations
-# ****adj. p-value < 0.0001
-
-
-testdat2 <- testdat %>%
-  filter(cytof_annot %in% c("T cells", "MAIT cells"))
-
-wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat2,
-                   alternative = c("two.sided"),
-                   exact = FALSE)
-
-p.adjust(wilcox_test$p.value, method = "BH")
-
-
-```
-
-
-
-
-```{r}
-# TEST
-
-testdat <- day3_sub_t@meta.data %>%
-  group_by(orig.ident, PTID, cytof_annot) %>%
-  mutate(mod1_means = mean(Module1)) %>%
-  ungroup() %>%
-  select(orig.ident, PTID, cytof_annot, mod1_means, Module1) %>%
-  distinct()
-
-# Neutrophil Day 3
-ggboxplot(testdat, x = "cytof_annot", y = "Module1", 
-          color = "cytof_annot", palette = pop_colors,
-          ylab = "mod1_means", xlab = "cytof_annot")
-
-
-
-testdat2 <- testdat %>%
-  filter(cytof_annot %in% c("T cells", "MAIT cells"))
-
-wilcox_test <- wilcox.test(Module1 ~ cytof_annot, data = testdat2,
-                   alternative = c("two.sided"),
-                   exact = FALSE)
-
-p.adjust(wilcox_test$p.value, method = "BH")
-
-
-
-****adj. p-value < 0.0001
-
-
-# Idents(day3_sub_t) <- "cytof_annot"
-# Idents(day15_sub_t) <- "cytof_annot"
-
-# Neutrophil Day 3
-VlnPlot(day3_sub_t, "Module1", pt.size = 0.1, cols = pop_colors) + 
-  NoLegend() +
-  ylim(-0.17, 0.52) +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 9),
-        axis.text.y = element_text(size = 9),
-        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
-  ggtitle("Neutrophils (I, II)")
-
-```
-
-
-
-
-
-
-
-
-
-
-Combine and save
-
-```{r}
-combined <- merge(day3_sub_t, day15_sub_t)
-
-combined@meta.data <- combined@meta.data %>%
-  mutate(orig.ident = factor(orig.ident, levels = c("Day3", "Day15")))
-
-saveRDS(combined, file = file.path(script_output_dir, "processed_data/11_combined_modules.rds"))
-```
-
-Violin plots
-
-```{r}
-neutr_vln <- VlnPlot(combined, "Module1", split.by = "orig.ident", 
-        cols = c("Day3" = "white", "Day15" = "gray50"), pt.size = 0) + 
-  ylim(-0.17, 0.52) +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 9),
-        axis.text.y = element_text(size = 9),
-        legend.text = element_text(size = 9),
-        legend.position = c(0.05, 0.9),
-        legend.key.size = unit(0.3, "cm"),
-        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
-  ggtitle("Neutrophils (I, II)")
-neutr_vln
-
-mono_vln <- VlnPlot(combined, "Module2", split.by = "orig.ident", 
-        cols = c("Day3" = "white", "Day15" = "gray50"), pt.size = 0) + 
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 9),
-        axis.text.y = element_text(size = 9),
-        legend.text = element_text(size = 9),
-        legend.position = c(0.05, 0.9),
-        legend.key.size = unit(0.3, "cm"),
-        plot.title = element_text(hjust = 0.5, face = "plain", size = 9)) +
-  ggtitle("Monocytes (II, IV)")
-mono_vln
-
-
-grid_vln <- ggarrange(plotlist = list(neutr_vln, mono_vln), nrow = 2, ncol = 1) %>%
-  annotate_figure(left = text_grob("Module Score", rot = 90, size = 9))
-grid_vln
 
 # Save
-ggsave(file.path(script_output_dir, "plots/Fig5_violin.png"), plot = grid_vln,
-       dpi = 300, width = 3.5, height = 5, device = "png")
+ggsave(file.path(script_output_dir, "plots/Fig5_violin_revised.png"), plot = all_mod_plt,
+       dpi = 300, width = 5, height = 5, device = "png")
 
-cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_violin.pdf"), 
-          width = 3.5, height = 5, bg = "transparent", family = "Arial")
-print(grid_vln)
+cairo_pdf(file = file.path(script_output_dir, "plots/Fig5_violin_revised.pdf"), 
+          width = 5, height = 5, bg = "transparent", family = "Arial")
+print(all_mod_plt)
 dev.off()
 ```
 
