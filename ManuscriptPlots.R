@@ -699,7 +699,7 @@ subtype_cols <- c(
   "CD16 Mono" = "lightsalmon",
   "NK" = "#0CB702",
   "Platelet" = "gold",
-  "Tcm" = "#8ab8fe",
+  "CD8 TCM" = "#00BFC4",
   "CD8 Naive" = "#00BFC4",
   "CD8 Proliferating" = "#00BFC4",
   "CD8 TEM" = "#00BFC4",
@@ -720,8 +720,7 @@ axis <- ggh4x::guide_axis_truncated(
 )
 
 umap_immune <- DimPlot(imm_integ,
-                    pt.size = 0.005, label = TRUE, repel = TRUE,
-                    label.size = 4) +
+                    pt.size = 0.005, label = FALSE) +
   guides(x = axis, y = axis) +
   theme(axis.line = element_line(arrow = grid::arrow(length = unit(0.3, "cm"),
                                                      ends = "last")),
@@ -737,9 +736,9 @@ umap_immune
 
 # With legend
 umap_immune_legend <- DimPlot(imm_integ,
-                       pt.size = 0.005, label = TRUE, repel = TRUE,
-                       label.size = 4) +
-  guides(x = axis, y = axis) +
+                       pt.size = 0.005, label = FALSE) +
+  guides(x = axis, y = axis,
+         color = guide_legend(override.aes = list(size=3), ncol=1)) +
   theme(axis.line = element_line(arrow = grid::arrow(length = unit(0.3, "cm"),
                                                      ends = "last")),
         axis.title = element_text(hjust = 0.01),
@@ -755,16 +754,16 @@ imm_legend <- ggpubr::get_legend(umap_immune_legend)
 imm_legend2 <- as_ggplot(imm_legend)
 
 # Save PNG
-ggsave(file.path(outdir, "Fig5_umap_immune.png"), plot = umap_immune,
+ggsave(file.path(outdir, "Fig5_umap_immune_revised.png"), plot = umap_immune,
        dpi = 300, width = 4, height = 4, device = "png")
 # Save PDF
-cairo_pdf(file = file.path(outdir, "Fig5_umap_immune.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig5_umap_immune_revised.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(umap_immune)
 dev.off()
 
 # Save legend
-cairo_pdf(file = file.path(outdir, "Fig5_umap_imm_legend.pdf"), 
+cairo_pdf(file = file.path(outdir, "Fig5_umap_imm_legend_revised.pdf"), 
           width=5, height=5, bg = "transparent", family = "Arial")
 print(imm_legend2)
 dev.off()
