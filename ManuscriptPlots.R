@@ -41,8 +41,7 @@ d3_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_fi
 d15_subset <- readRDS(file.path(script_output_dir, "processed_data/8_annot_sub_final_d15.rds"))
 
 # Micro data
-# micro_f <- "/media/emmabishop/5TBSharedStorage/project_data/2022_BCGChallenge/Round1/Copy of Combined CFU MVT RS data.xlsx"
-micro_f <- "/media/emmabishop/5TBSharedStorage/aws_bam_fastq/Combined CFU MVT RS data KER.xlsx"
+micro_f <- "/media/emmabishop/5TBSharedStorage/2022_BCGChallenge/Round1/micro/Combined CFU MVT RS data KER.xlsx"
 
 # CyTOF cell population frequencies
 all_full_count <- read_csv(file.path(script_output_dir, "processed_data/BCG_Skin_Biopsy_CD45_Subsets.csv"))
@@ -384,75 +383,7 @@ cairo_pdf(file = file.path(outdir, "SuppFig1_corr_mvt_cfu.pdf"),
 print(corr_mvt_cfu)
 dev.off()
 
-############################
-## Correlation CFU vs R:S ##
-############################
 
-# Kendall tau correlation
-# Using Kendall tau per E. Chandler Church
-cor.test(micro$CFU, micro$RS, method=c("kendall"))
-
-corr_cfu_rs <- ggscatter(micro2, x = "RS", y = "cfu_log", add = "reg.line") +
-  geom_point(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +
-  scale_fill_manual(values = colors) +
-  stat_cor(method = "kendall", cor.coef.name = "tau", size = 4) +
-  xlim(0, 310) +
-  xlab('R:S ratio') +
-  ylab('CFU') +
-  scale_y_log10(limits = c(1,1500000),
-                breaks = trans_breaks("log10", function(x) 10^x),
-                labels = trans_format("log10", math_format(10^.x))) +
-  theme_classic() +
-  theme(text = element_text(family="Arial"),
-        axis.title.x = element_text(size = 14.5),
-        axis.title.y = element_text(size = 14.5),
-        axis.text.x = element_text(color="black", size=14),
-        axis.text.y = element_text(color="black", size=14),
-        legend.position = "none")
-corr_cfu_rs
-
-## Save plots ##
-ggsave(file.path(outdir, "SuppFig1_corr_cfu_rs.png"), plot = corr_cfu_rs,
-       dpi = 300, width = 4, height = 3, device = "png")
-
-cairo_pdf(file = file.path(outdir, "SuppFig1_corr_cfu_rs.pdf"), 
-          width = 4, height = 3, bg = "transparent", family = "Arial")
-print(corr_cfu_rs)
-dev.off()
-
-##################################
-## Correlation rRNA:rDNA vs R:S ##
-##################################
-
-# Kendall tau correlation
-# Using Kendall tau per E. Chandler Church
-cor.test(micro$MVT, micro$RS, method=c("kendall"))
-
-corr_mvt_rs <- ggscatter(micro2, x = "RS", y = "MVT", add = "reg.line") +
-  geom_point(aes(fill = Treatment), size = 4, shape = 21, cex = 3) +
-  scale_fill_manual(values = colors) +
-  stat_cor(method = "kendall", cor.coef.name = "tau", size = 4) +
-  xlim(0, 310) +
-  xlab('R:S ratio') +
-  ylim(0, 150) +
-  ylab('Maximum pre-rRNA:rDNA ratio') +
-  theme_classic() +
-  theme(text = element_text(family="Arial"),
-        axis.title.x = element_text(size = 14.5),
-        axis.title.y = element_text(size = 13),
-        axis.text.x = element_text(color="black", size=14),
-        axis.text.y = element_text(color="black", size=14),
-        legend.position = "none")
-corr_mvt_rs
-
-## Save plots ##
-ggsave(file.path(outdir, "SuppFig1_corr_mvt_rs.png"), plot = corr_mvt_rs,
-       dpi = 300, width = 4, height = 3, device = "png")
-
-cairo_pdf(file = file.path(outdir, "SuppFig1_corr_mvt_rs.pdf"), 
-          width = 4, height = 3, bg = "transparent", family = "Arial")
-print(corr_mvt_rs)
-dev.off()
 
 ##############################
 ## Correlation plots legend ##
