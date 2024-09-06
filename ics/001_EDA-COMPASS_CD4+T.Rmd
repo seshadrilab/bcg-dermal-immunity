@@ -1,0 +1,833 @@
+---
+title: "- ICS - CD4+ T - `COMPASS` -"
+site: workflowr::wflow_site
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+body{text-align: justify}
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+*File creation: February, 14th 2024*  
+*Update: May, 04th 2024*
+
+```{r echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(cowplot)
+library(data.table)
+library(doMC)
+library(COMPASS)
+library(gtable)
+```
+```{r echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# load(here("output", "001_output", "001_EDA-COMPASS_CD4+T.RData"))
+# save.image(here("output", "001_output", "001_EDA-COMPASS_CD4+T.RData"))
+```
+
+`COMPASS` (Combinatorial Polyfunctionality Analysis of Single Cells) is a computational framework for unbiased polyfunctionality analysis of antigen-specific T-cell subsets. `COMPASS` uses a Bayesian hierarchical framework to model all observed functional cell subsets and select those most likely to exhibit antigen-specific responses. Cell subset responses are quantified by posterior probabilities, while subject-level responses are quantified by two summary statistics (*scores*) that can be correlated directly with clinical outcome and describe the quality of an individual's (poly)functional response. The functionality score is defined as the estimated proportion of antigen-specific subsets detected among all possible ones. The polyfunctionality score is similar, but it weighs the different subsets by their degree of functionality, naturally favoring subsets with higher degrees of functions, motivated by the observation that higher degree function has been correlated with good outcomes in certain vaccine studies. 
+For the `COMPASS` analysis, cell subsets that do not have at least 10 cells in at least 5 participants are excluded. The standard ICS filter on mean negative control is not used. Unreliable samples are also excluded.  
+
+# - `COMPASS`
+_____________
+
+`COMPASS` with CD4+ T expressing 1 of 7 cytokines or functional activation markers (IFN-$\gamma$, TNF-$\alpha$, CD154, CD153, GM-CSF, IL-2, IL-17a and IL-4/IL-13) has been run on Rhino; see code below:  
+
+* `001A_COMPASScontainer_CD4+T.R` (1);  
+
+* `001B_COMPASS_tuning-params_CD4+T.R` (2);  
+
+* `001C_COMPASS_runCOMPASS_CD4+T.R` (3);  
+
+* `001D_COMPASSMCMCDiagnosis_CD4+T.R` (4).  
+
+## - **BCG TICE**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean)
+#- Data
+res.COMPASS <- readRDS(file = here("output", 
+                                   "001_output", 
+                                   "tuning", 
+                                   "BCG TICE", 
+                                   "CD4+T_BCG TICE_COMPASS-dx.rds"))
+
+#- Diagnostics (alpha_s & alpha_u)
+# Run Gelman's Rhat diagnostics on the alpha_s and alpha_u hyperparameter chains, 
+# treating each model as an independent chain. 
+# Rhat should be near 1 but rarely are in practice. 
+# Very large values may be a concern.
+res.COMPASS$diag
+
+#- Diagnostics (correlation)
+# Models
+model_files <- list.files(here("output", "001_output", "tuning", "BCG TICE"), 
+                          full.names = TRUE, 
+                          pattern = "CD4[+]T_negctrl_BCG TICE_tuned")
+models <- lapply(model_files, readRDS)
+# Function model_cor
+model_cor <- function(x, y) 
+{
+  mgx <- x$fit$mean_gamma
+  mgy <- y$fit$mean_gamma
+  matrix(vapply(1:ncol(mgx), function(z) cor(mgx[, z, drop=FALSE], mgy[, z, drop=FALSE]), 1))
+}
+# Correlation
+pairs <- combn(1:10, 2)
+mgcor <- t(apply(pairs, 2, function(x) model_cor(models[[x[[1]]]], models[[x[[2]]]])))
+# Figure
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-correlation_BCG-TICE.pdf"), width = 6, height = 8, pointsize = 12)
+corrplot::corrplot(mgcor)
+dev.off()
+```
+
+**Functionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- (Poly)Functionality score
+#- Data (dt.ggplot)
+dt.ggplot <- scores(res.COMPASS$mean_model) %>%
+  mutate(STIM = "BCG TICE") %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17")))
+```
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = FS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#A6CEE3", high = "#1F78B4") +
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "Functionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-FS_BCG-TICE.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**PolyFunctionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = PFS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#A6CEE3", high = "#1F78B4") +
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "PolyFunctionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-PFS_BCG-TICE.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**Heatmap**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Heatmap
+#- Data (dt.ggplot)
+dt.ggplot <- res.COMPASS$mean_model
+dt.ggplot$data$meta$VISITNO <- factor(x = dt.ggplot$data$meta$VISITNO, levels = c("2", "9", "11", "12", "13", "17"))
+
+#- Colors
+my.colors <- ggplot_build(plot)$data[[1]]$fill
+names(my.colors) <- c("2", "9", "11", "12", "13", "17")
+
+#- Order & names
+colnames(dt.ggplot$fit$categories) <- sapply(X = colnames(dt.ggplot$fit$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$data$categories) <- sapply(X = colnames(dt.ggplot$data$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$fit$mean_gamma) <- str_remove_all(string = colnames(dt.ggplot$fit$mean_gamma), 
+                                                     pattern = " APC| BUV737| V450| PE-Cy7| BB700| BB630| BUV395")
+
+#- Modified plot.COMPASSResult to return heatmap as grob
+heatmap_grob <- plot(dt.ggplot, 
+                     "VISITNO", 
+                     show_rownames = FALSE,
+                     row_annotation_colors = list(VISITNO = my.colors), 
+                     fontsize = 14, 
+                     fontsize_row = 13, 
+                     fontsize_col = 11, 
+                     threshold = -1)
+
+#- Turn grob into gtable to make compatible with cowplot
+heatmap_gtable <- gtable(unit(1, c("grobwidth"), data = heatmap_grob), unit(1, "grobheight", data = heatmap_grob))
+heatmap_gtable <- gtable_add_grob(heatmap_gtable, heatmap_grob, 1, 1)
+  
+#- Figure
+title <- ggdraw() + 
+  draw_label("ICS: CD4+ T\nSTIM: BCG TICE",
+            fontface = 'bold',
+            x = 0, hjust = 0) +
+  theme(plot.margin = margin(0, 0, 0, 7))
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-heatmap_BGC-TICE.pdf"), width = 8, height = 10, pointsize = 12)
+cowplot::plot_grid(title, 
+                   heatmap_gtable, 
+                   ncol = 1,
+                   rel_heights = c(0.1, 1)) %>% print()
+dev.off()
+```
+
+
+## - **Mtb 213**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean)
+#- Data
+res.COMPASS <- readRDS(file = here("output", 
+                                   "001_output", 
+                                   "tuning", 
+                                   "Mtb 213", 
+                                   "CD4+T_Mtb 213_COMPASS-dx.rds"))
+
+#- Diagnostics (alpha_s & alpha_u)
+# Run Gelman's Rhat diagnostics on the alpha_s and alpha_u hyperparameter chains, 
+# treating each model as an independent chain. 
+# Rhat should be near 1 but rarely are in practice. 
+# Very large values may be a concern.
+res.COMPASS$diag
+
+#- Diagnostics (correlation)
+# Models
+model_files <- list.files(here("output", "001_output", "tuning", "Mtb 213"), 
+                          full.names = TRUE, 
+                          pattern = "CD4[+]T_negctrl_Mtb 213_tuned")
+models <- lapply(model_files, readRDS)
+# Function model_cor
+model_cor <- function(x, y) 
+{
+  mgx <- x$fit$mean_gamma
+  mgy <- y$fit$mean_gamma
+  matrix(vapply(1:ncol(mgx), function(z) cor(mgx[, z, drop=FALSE], mgy[, z, drop=FALSE]), 1))
+}
+# Correlation
+pairs <- combn(1:10, 2)
+mgcor <- t(apply(pairs, 2, function(x) model_cor(models[[x[[1]]]], models[[x[[2]]]])))
+# Figure
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-correlation_Mtb213.pdf"), width = 6, height = 8, pointsize = 12)
+corrplot::corrplot(mgcor)
+dev.off()
+```
+
+**Functionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- (Poly)Functionality score
+#- Data (dt.ggplot)
+dt.ggplot <- scores(res.COMPASS$mean_model) %>%
+  mutate(STIM = "Mtb 213") %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17")))
+```
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = FS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#B2DF8A", high = "#33A02C") + 
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "Functionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-FS_Mtb213.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**PolyFunctionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = PFS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#B2DF8A", high = "#33A02C") + 
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "PolyFunctionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-PFS_Mtb213.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**Heatmap**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Heatmap
+#- Data (dt.ggplot)
+dt.ggplot <- res.COMPASS$mean_model
+dt.ggplot$data$meta$VISITNO <- factor(x = dt.ggplot$data$meta$VISITNO, levels = c("2", "9", "11", "12", "13", "17"))
+
+#- Colors
+my.colors <- ggplot_build(plot)$data[[1]]$fill
+names(my.colors) <- c("2", "9", "11", "12", "13", "17")
+
+#- Order & names
+colnames(dt.ggplot$fit$categories) <- sapply(X = colnames(dt.ggplot$fit$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$data$categories) <- sapply(X = colnames(dt.ggplot$data$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$fit$mean_gamma) <- str_remove_all(string = colnames(dt.ggplot$fit$mean_gamma), 
+                                                     pattern = " APC| BUV737| V450| PE-Cy7| BB700| BB630| BUV395")
+
+#- Modified plot.COMPASSResult to return heatmap as grob
+heatmap_grob <- plot(dt.ggplot, 
+                     "VISITNO", 
+                     show_rownames = FALSE,
+                     row_annotation_colors = list(VISITNO = my.colors), 
+                     fontsize = 14, 
+                     fontsize_row = 13, 
+                     fontsize_col = 11, 
+                     threshold = -1)
+
+#- Turn grob into gtable to make compatible with cowplot
+heatmap_gtable <- gtable(unit(1, c("grobwidth"), data = heatmap_grob), unit(1, "grobheight", data = heatmap_grob))
+heatmap_gtable <- gtable_add_grob(heatmap_gtable, heatmap_grob, 1, 1)
+  
+#- Figure
+title <- ggdraw() + 
+  draw_label("ICS: CD4+ T\nSTIM: Mtb 213",
+            fontface = 'bold',
+            x = 0, hjust = 0) +
+  theme(plot.margin = margin(0, 0, 0, 7))
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-heatmap_Mtb213.pdf"), width = 8, height = 10, pointsize = 12)
+cowplot::plot_grid(title, 
+                   heatmap_gtable, 
+                   ncol = 1,
+                   rel_heights = c(0.1, 1)) %>% print()
+dev.off()
+```
+
+
+## - **TB WCL**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean)
+#- Data
+res.COMPASS <- readRDS(file = here("output", 
+                                   "001_output", 
+                                   "tuning", 
+                                   "TB WCL", 
+                                   "CD4+T_TB WCL_COMPASS-dx.rds"))
+
+#- Diagnostics (alpha_s & alpha_u)
+# Run Gelman's Rhat diagnostics on the alpha_s and alpha_u hyperparameter chains, 
+# treating each model as an independent chain. 
+# Rhat should be near 1 but rarely are in practice. 
+# Very large values may be a concern.
+res.COMPASS$diag
+
+#- Diagnostics (correlation)
+# Models
+model_files <- list.files(here("output", "001_output", "tuning", "TB WCL"), 
+                          full.names = TRUE, 
+                          pattern = "CD4[+]T_negctrl_TB WCL_tuned")
+models <- lapply(model_files, readRDS)
+# Function model_cor
+model_cor <- function(x, y) 
+{
+  mgx <- x$fit$mean_gamma
+  mgy <- y$fit$mean_gamma
+  matrix(vapply(1:ncol(mgx), function(z) cor(mgx[, z, drop=FALSE], mgy[, z, drop=FALSE]), 1))
+}
+# Correlation
+pairs <- combn(1:10, 2)
+mgcor <- t(apply(pairs, 2, function(x) model_cor(models[[x[[1]]]], models[[x[[2]]]])))
+# Figure
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-correlation_TB-WCL.pdf"), width = 6, height = 8, pointsize = 12)
+corrplot::corrplot(mgcor)
+dev.off()
+```
+
+**Functionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- (Poly)Functionality score
+#- Data (dt.ggplot)
+dt.ggplot <- scores(res.COMPASS$mean_model) %>%
+  mutate(STIM = "TB WCL") %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17")))
+```
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = FS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = FS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#FB9A99", high = "#E31A1C") +
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "Functionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-FS_TB-WCL.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**PolyFunctionality score**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Figure
+set.seed(1234)
+dt.ggplot %>%
+  arrange(PTID, VISITNO) %>%
+  ggplot() +
+    geom_boxplot(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)),
+                   alpha = .25, width = .5, outlier.shape = NA) +
+    geom_line(aes(x = VISITNO, y = PFS, group = PTID), 
+              position = position_jitter(width = .05, seed = 123),
+              color = "grey80") +
+    geom_point(aes(x = VISITNO, y = PFS, fill = as.numeric(VISITNO)), 
+               position = position_jitter(width = .05, seed = 123),
+               size = 5, alpha = 1, pch = 21, color = "white") +
+    scale_fill_gradient(low = "#FB9A99", high = "#E31A1C") +
+    facet_wrap(~ STIM) +
+    labs(x = "Visit #", 
+         y = "PolyFunctionality score", 
+         title = "ICS: CD4+ T",
+         fill = NULL) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme_bw() +
+    theme(axis.text = element_text(size = 15),
+          axis.title = element_text(size = 16),
+          title = element_text(size = 16),
+          strip.text.x = element_text(size = 16),
+          strip.text.y = element_text(size = 9),
+          panel.grid = element_blank(),
+          legend.position = "none") -> plot
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-PFS_TB-WCL.pdf"), width = 8, height = 7, pointsize = 12)
+plot
+dev.off()
+```
+
+**Heatmap**
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- Heatmap
+#- Data (dt.ggplot)
+dt.ggplot <- res.COMPASS$mean_model
+dt.ggplot$data$meta$VISITNO <- factor(x = dt.ggplot$data$meta$VISITNO, levels = c("2", "9", "11", "12", "13", "17"))
+
+#- Colors
+my.colors <- ggplot_build(plot)$data[[1]]$fill
+names(my.colors) <- c("2", "9", "11", "12", "13", "17")
+
+#- Order & names
+colnames(dt.ggplot$fit$categories) <- sapply(X = colnames(dt.ggplot$fit$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$data$categories) <- sapply(X = colnames(dt.ggplot$data$categories), FUN = function(x) str_split(string = x, pattern = " ")[[1]][1])
+colnames(dt.ggplot$fit$mean_gamma) <- str_remove_all(string = colnames(dt.ggplot$fit$mean_gamma), 
+                                                     pattern = " APC| BUV737| V450| PE-Cy7| BB700| BB630| BUV395")
+
+#- Modified plot.COMPASSResult to return heatmap as grob
+heatmap_grob <- plot(dt.ggplot, 
+                     "VISITNO", 
+                     show_rownames = FALSE,
+                     row_annotation_colors = list(VISITNO = my.colors), 
+                     fontsize = 14, 
+                     fontsize_row = 13, 
+                     fontsize_col = 11, 
+                     threshold = -1)
+
+#- Turn grob into gtable to make compatible with cowplot
+heatmap_gtable <- gtable(unit(1, c("grobwidth"), data = heatmap_grob), unit(1, "grobheight", data = heatmap_grob))
+heatmap_gtable <- gtable_add_grob(heatmap_gtable, heatmap_grob, 1, 1)
+  
+#- Figure
+title <- ggdraw() + 
+  draw_label("ICS: CD4+ T\nSTIM: TB WCL",
+            fontface = 'bold',
+            x = 0, hjust = 0) +
+  theme(plot.margin = margin(0, 0, 0, 7))
+cairo_pdf(file = here("output", "001_output", "CD4+T_COMPASS-heatmap_TB-WCL.pdf"), width = 8, height = 10, pointsize = 12)
+cowplot::plot_grid(title, 
+                   heatmap_gtable, 
+                   ncol = 1,
+                   rel_heights = c(0.1, 1)) %>% print()
+dev.off()
+```
+
+
+## - Statistics
+
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean)
+#- Data (BCG TICE)
+res.COMPASS_1 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "BCG TICE", 
+                                     "CD4+T_BCG TICE_COMPASS-dx.rds"))
+
+#- Data (Mtb 213)
+res.COMPASS_2 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "Mtb 213", 
+                                     "CD4+T_Mtb 213_COMPASS-dx.rds"))
+
+#- Data (TB WCL)
+res.COMPASS_3 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "TB WCL", 
+                                     "CD4+T_TB WCL_COMPASS-dx.rds"))
+
+#- dt.ggplot
+bind_rows(scores(res.COMPASS_1$mean_model) %>%
+  mutate(STIM = "BCG TICE"),
+          scores(res.COMPASS_2$mean_model) %>%
+  mutate(STIM = "Mtb 213"),
+          scores(res.COMPASS_3$mean_model) %>%
+  mutate(STIM = "TB WCL")) %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17"))) -> dt.ggplot
+dt.ggplot %>%
+  write_csv(file = here("output", "001_output", "CD4+T_COMPASS.csv"))
+dt.ggplot <- dt.ggplot %>%
+  group_by(PTID, STIM) %>%
+  mutate(filt = paste(VISITNO, collapse = "_")) %>%
+  filter(str_detect(string = filt, pattern = "_2")) %>%
+  group_by(PTID, STIM) %>%
+  mutate(FS_bl = FS[VISITNO == "2"]) %>%
+  ungroup() %>%
+  select(PTID, STIM, VISITNO, FS_bl, FS)
+
+#- Statistics
+# In each STIM, multiple adjustment is made over the visitno
+foreach(i = unique(dt.ggplot$STIM)) %do% {
+  # Data
+  dt.ggplot %>%
+    filter(STIM == i) %>%
+    filter(VISITNO != "2") %>%
+    group_by(STIM, VISITNO) %>%
+    summarize(n = n(),
+              `Wilcoxon signed-rank test p-value` = wilcox.test(x = FS, y = FS_bl, paired = TRUE)$p.value) %>%
+    return()
+} %>% bind_rows() -> dt.stats
+dt.stats %>%
+  group_by(VISITNO) %>%
+  mutate(`FDR p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "fdr"),
+         `FWER p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "bonferroni")) %>%
+  write_csv(file = here("output", "001_output", "dt-statistics_COMPASS-FS.csv"))
+```
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean)
+#- Data (BCG TICE)
+res.COMPASS_1 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "BCG TICE", 
+                                     "CD4+T_BCG TICE_COMPASS-dx.rds"))
+
+#- Data (Mtb 213)
+res.COMPASS_2 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "Mtb 213", 
+                                     "CD4+T_Mtb 213_COMPASS-dx.rds"))
+
+#- Data (TB WCL)
+res.COMPASS_3 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "TB WCL", 
+                                     "CD4+T_TB WCL_COMPASS-dx.rds"))
+
+#- dt.ggplot
+bind_rows(scores(res.COMPASS_1$mean_model) %>%
+  mutate(STIM = "BCG TICE"),
+          scores(res.COMPASS_2$mean_model) %>%
+  mutate(STIM = "Mtb 213"),
+          scores(res.COMPASS_3$mean_model) %>%
+  mutate(STIM = "TB WCL")) %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17"))) -> dt.ggplot
+dt.ggplot <- dt.ggplot %>%
+  group_by(PTID, STIM) %>%
+  mutate(filt = paste(VISITNO, collapse = "_")) %>%
+  filter(str_detect(string = filt, pattern = "_2")) %>%
+  group_by(PTID, STIM) %>%
+  mutate(PFS_bl = PFS[VISITNO == "2"]) %>%
+  ungroup() %>%
+  select(PTID, STIM, VISITNO, PFS_bl, PFS)
+
+#- Statistics
+# In each STIM, multiple adjustment is made over the visitno
+foreach(i = unique(dt.ggplot$STIM)) %do% {
+  # Data
+  dt.ggplot %>%
+    filter(STIM == i) %>%
+    filter(VISITNO != "2") %>%
+    group_by(STIM, VISITNO) %>%
+    summarize(n = n(),
+              `Wilcoxon signed-rank test p-value` = wilcox.test(x = PFS, y = PFS_bl, paired = TRUE)$p.value) %>%
+    return()
+} %>% bind_rows() -> dt.stats
+dt.stats %>%
+  group_by(VISITNO) %>%
+  mutate(`FDR p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "fdr"),
+         `FWER p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "bonferroni")) %>%
+  write_csv(file = here("output", "001_output", "dt-statistics_COMPASS-PFS.csv"))
+
+#- Fig.
+dt.ggplot %>%
+  filter(STIM == "TB WCL") %>%
+  mutate(X = plyr::mapvalues(x = VISITNO, from = c(2, 9, 11, 12, 13, 17), to = c("0", "8", "28", "56", "84", "114"))) %>%
+  mutate(X = factor(x = X, levels = c("0", "8", "28", "56", "84", "114"))) %>%
+  ggplot(aes(x = X, y = PFS)) +
+    geom_line(aes(group = PTID), color = "grey80", alpha = .75) +
+    geom_point(pch = 21, fill = "grey80", color = "black", size = 2) +
+    # stat_summary(fun = median, geom = "line", group = 1) +
+    # stat_summary(fun.data = ggpubr::median_q1q3, geom = "pointrange") +
+    geom_boxplot(alpha = 0, outlier.shape = NA) +
+    scale_y_continuous(limits = c(0.02, 0.065),
+                       breaks = seq(0.01, 0.06, 0.01)) +
+    facet_wrap(~ STIM) +
+    labs(x = NULL, y = "CD4+ Polyfunctionality\n(COMPASS)") +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 16)) -> plotA
+dt.ggplot %>%
+  filter(STIM == "Mtb 213") %>%
+  mutate(X = plyr::mapvalues(x = VISITNO, from = c(2, 9, 11, 12, 13, 17), to = c("0", "8", "28", "56", "84", "114"))) %>%
+  mutate(X = factor(x = X, levels = c("0", "8", "28", "56", "84", "114"))) %>%
+  ggplot(aes(x = X, y = PFS)) +
+    geom_line(aes(group = PTID), color = "grey80", alpha = .75) +
+    geom_point(pch = 21, fill = "grey80", color = "black", size = 2) +
+    # stat_summary(fun = median, geom = "line", group = 1) +
+    # stat_summary(fun.data = ggpubr::median_q1q3, geom = "pointrange") +
+    geom_boxplot(alpha = 0, outlier.shape = NA) +
+    scale_y_continuous(limits = c(0.01, 0.035),
+                       breaks = seq(0.01, 0.06, 0.01)) +
+    facet_wrap(~ STIM) +
+    labs(x = NULL, y = "CD4+ Polyfunctionality\n(COMPASS)") +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_blank()) -> plotB
+dt.ggplot %>%
+  filter(STIM == "BCG TICE") %>%
+  mutate(STIM == "Live BCG") %>%
+  mutate(X = plyr::mapvalues(x = VISITNO, from = c(2, 9, 11, 12, 13, 17), to = c("0", "8", "28", "56", "84", "114"))) %>%
+  mutate(X = factor(x = X, levels = c("0", "8", "28", "56", "84", "114"))) %>%
+  ggplot(aes(x = X, y = PFS)) +
+    geom_line(aes(group = PTID), color = "grey80", alpha = .75) +
+    geom_point(pch = 21, fill = "grey80", color = "black", size = 2) +
+    # stat_summary(fun = median, geom = "line", group = 1) +
+    # stat_summary(fun.data = ggpubr::median_q1q3, geom = "pointrange") +
+    geom_boxplot(alpha = 0, outlier.shape = NA) +
+    scale_y_continuous(limits = c(0.02, 0.065),
+                       breaks = seq(0.01, 0.06, 0.01)) +
+    facet_wrap(~ STIM) +
+    labs(x = NULL, y = "CD4+ Polyfunctionality\n(COMPASS)") +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_blank()) -> plotC
+cairo_pdf(filename = here("output", "003_output", "Fig_C.pdf"), width = 10, height = 3, onefile = TRUE)
+cowplot::plot_grid(plotA, plotB, plotC, ncol = 3, rel_widths = c(1.1, 1, 1))
+dev.off()
+
+#- Fig. (Fold-change)
+dt.ggplot %>%
+  mutate(STIM = plyr::mapvalues(x = STIM, 
+                                from = c("TB WCL", "Mtb 213", "Mtb213", "BCG TICE", "sebctrl"), 
+                                to = c("TB WCL", "Mtb 213", "Mtb 213", "Live BCG", "sebctrl"))) %>%
+  mutate(X = plyr::mapvalues(x = VISITNO, from = c(2, 9, 11, 12, 13, 17), to = c("0", "8", "28", "56", "84", "114"))) %>%
+  mutate(X = factor(x = X, levels = c("0", "8", "28", "56", "84", "114"))) %>%
+  ggplot(aes(x = X, y = PFS / PFS_bl)) +
+    geom_line(aes(group = PTID), color = "grey80") +
+    stat_summary(fun = median, geom = "line", group = 1) +
+    stat_summary(fun.data = ggpubr::median_q1q3, geom = "pointrange") +
+    facet_wrap(~ STIM) + 
+    scale_y_continuous(breaks = c(0.5, 1, 1.5, 2),
+                       limits = c(0.7, 2)) +
+    labs(x = NULL, y = "Fold-change\n(CD4+ Polyfunctionality)") +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 16)) -> plot
+cairo_pdf(filename = here("output", "003_output", "Fig_C_fold-change.pdf"), width = 8, height = 3, onefile = TRUE)
+plot
+dev.off()
+```
+```{r eval=FALSE, echo=TRUE, message=FALSE, warnings=FALSE}
+###--- COMPASS (mean) (04-MAY-2024)
+#- Data (BCG TICE)
+res.COMPASS_1 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "BCG TICE", 
+                                     "CD4+T_BCG TICE_COMPASS-dx.rds"))
+
+#- Data (Mtb 213)
+res.COMPASS_2 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "Mtb 213", 
+                                     "CD4+T_Mtb 213_COMPASS-dx.rds"))
+
+#- Data (TB WCL)
+res.COMPASS_3 <- readRDS(file = here("output", "001_output", "tuning", 
+                                     "TB WCL", 
+                                     "CD4+T_TB WCL_COMPASS-dx.rds"))
+
+#- dt.ggplot
+bind_rows(scores(res.COMPASS_1$mean_model) %>%
+  mutate(STIM = "BCG TICE"),
+          scores(res.COMPASS_2$mean_model) %>%
+  mutate(STIM = "Mtb 213"),
+          scores(res.COMPASS_3$mean_model) %>%
+  mutate(STIM = "TB WCL")) %>%
+  mutate(VISITNO = factor(x = VISITNO, levels = c("2", "9", "11", "12", "13", "17"))) -> dt.ggplot
+dt.ggplot <- dt.ggplot %>%
+  group_by(PTID, STIM) %>%
+  mutate(filt = paste(VISITNO, collapse = "_")) %>%
+  filter(str_detect(string = filt, pattern = "_2")) %>%
+  group_by(PTID, STIM) %>%
+  mutate(PFS_bl = PFS[VISITNO == "2"]) %>%
+  ungroup() %>%
+  select(PTID, STIM, VISITNO, PFS_bl, PFS)
+
+#- Statistics
+# In each STIM, multiple adjustment is made over the visitno
+foreach(i = unique(dt.ggplot$STIM)) %do% {
+  # Data
+  dt.ggplot %>%
+    filter(STIM == i) %>%
+    filter(VISITNO != "2") %>%
+    group_by(STIM, VISITNO) %>%
+    summarize(n = n(),
+              `Wilcoxon signed-rank test p-value` = wilcox.test(x = PFS, y = PFS_bl, paired = TRUE)$p.value) %>%
+    return()
+} %>% bind_rows() -> dt.stats
+dt.stats %>%
+  group_by(VISITNO) %>%
+  mutate(`FDR p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "fdr"),
+         `FWER p-value` = p.adjust(p = `Wilcoxon signed-rank test p-value`, method = "bonferroni")) %>%
+  write_csv(file = here("output", "001_output", "dt-statistics_COMPASS-PFS.csv"))
+
+#- Fig.
+dt.ggplot <- dt.ggplot %>%
+  mutate(STIM = case_when(STIM == "BCG TICE" ~ "Live BCG", .default = STIM)) %>%
+  filter(STIM != "sebctrl") %>%
+  filter(STIM != "Mtb 213") %>%
+  mutate(STIM = factor(x = STIM, levels = c("TB WCL", "Live BCG"))) %>%
+  mutate(X = plyr::mapvalues(x = VISITNO, from = c(2, 9, 11, 12, 13, 17), to = c("0", "8", "28", "56", "84", "114"))) %>%
+  mutate(X = factor(x = X, levels = c("0", "8", "28", "56", "84", "114"))) 
+dt.ggplot <- dt.ggplot %>%
+  filter(!(PTID == "BCG08" & VISITNO == 9))
+dt.ggplot <- dt.ggplot %>%
+  filter(!(PTID == "BCG12"))
+dt.ggplot %>%
+  ggplot(aes(x = X, y = PFS)) +
+    geom_line(aes(group = PTID), color = "grey80", alpha = .75) +
+    geom_point(pch = 21, fill = "grey80", color = "black", size = 2) +
+    geom_boxplot(alpha = 0, outlier.shape = NA) +
+    scale_y_continuous(limits = c(0.02, 0.065),
+                       breaks = seq(0.01, 0.06, 0.01)) +
+    facet_wrap(~ STIM) +
+    labs(x = NULL, y = "CD4+ Polyfunctionality\n(COMPASS)") +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_text(size = 16),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 16)) -> plot
+cairo_pdf(filename = here("output", "003_output", "Fig_C_13-MAY-2024.pdf"), width = 6, height = 3, onefile = TRUE)
+plot
+dev.off()
+```
+
